@@ -1,11 +1,14 @@
-# Core ML
+# SOKRATES Requirements
+# =====================
+# Tested on: Python 3.12, CUDA 12.8, NVIDIA H100
+
+# Core ML Framework
 torch>=2.1.0
 transformers>=4.36.0
 peft>=0.7.0
 trl>=0.7.0
 datasets>=2.15.0
 accelerate>=0.25.0
-bitsandbytes>=0.41.0
 
 # Constrained Decoding
 outlines>=0.0.34
@@ -25,10 +28,12 @@ pyyaml>=6.0.0
 jsonlines>=4.0.0
 rich>=13.0.0
 
-# Development
-pytest>=7.4.0
-pytest-cov>=4.1.0
-black>=23.0.0
-ruff>=0.1.0
-ipykernel>=6.0.0
+# HuggingFace Hub (for model/dataset downloads)
+huggingface-hub>=0.20.0
 
+# Development (optional - install with pip install -e ".[dev]")
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# black>=23.0.0
+# ruff>=0.1.0
+# ipykernel>=6.0.0
