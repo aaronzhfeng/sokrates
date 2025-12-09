@@ -1,0 +1,363 @@
+"""
+Optionizer: Convert raw proofs into optionized Thought/Action format.
+
+This module handles the conversion of P-FOLIO proof annotations and 
+PrOntoQA traces into the structured option format used by SOKRATES.
+"""
+
+import re
+from typing import Optional
+
+from src.data.structures import (
+    FOLFormula,
+    LogicalState,
+    OptionType,
+    OptionizedTrace,
+    ProofStep,
+)
+
+
+class Optionizer:
+    """
+    Converts natural language proofs with inference rule annotations
+    into optionized traces.
+    """
+
+    # Mapping from P-FOLIO rule names to OptionType
+    PFOLIO_RULE_MAP = {
+        "modus ponens": OptionType.MODUS_PONENS,
+        "modus tollens": OptionType.MODUS_TOLLENS,
+        "hypothetical syllogism": OptionType.HYPOTHETICAL_SYLLOGISM,
+        "disjunctive syllogism": OptionType.DISJUNCTIVE_SYLLOGISM,
+        "universal instantiation": OptionType.UNIV_INSTANTIATION,
+        "universal generalization": OptionType.UNIV_GENERALIZATION,
+        "existential instantiation": OptionType.EXIST_INSTANTIATION,
+        "existential generalization": OptionType.EXIST_GENERALIZATION,
+        "conjunction introduction": OptionType.AND_INTRO,
+        "conjunction elimination": OptionType.AND_ELIM,
+        "and introduction": OptionType.AND_INTRO,
+        "and elimination": OptionType.AND_ELIM,
+        "disjunction introduction": OptionType.OR_INTRO,
+        "or introduction": OptionType.OR_INTRO,
+        "case split": OptionType.CASE_SPLIT,
+        "proof by cases": OptionType.CASE_SPLIT,
+        "biconditional introduction": OptionType.BICONDITIONAL_INTRO,
+        "biconditional elimination": OptionType.BICONDITIONAL_ELIM,
+        "contradiction": OptionType.CONTRADICTION,
+        "double negation": OptionType.DOUBLE_NEGATION,
+        "double negation elimination": OptionType.DOUBLE_NEGATION,
+        "conditional proof": OptionType.CONDITIONAL_PROOF,
+        "implication introduction": OptionType.CONDITIONAL_PROOF,
+    }
+
+    def __init__(self):
+        pass
+
+    def optionize_pfolio_example(
+        self,
+        problem_id: str,
+        premises: list[str],
+        fol_premises: list[str],
+        conclusion: str,
+        fol_conclusion: str,
+        proof_steps: list[dict],
+        label: str,
+    ) -> OptionizedTrace:
+        """
+        Convert a P-FOLIO example with proof annotations into an optionized trace.
+
+        Args:
+            problem_id: Unique identifier for the problem
+            premises: List of NL premise strings
+            fol_premises: List of FOL premise strings
+            conclusion: NL conclusion string
+            fol_conclusion: FOL conclusion string
+            proof_steps: List of dicts with keys:
+                - 'step': NL description of the step
+                - 'rule': Name of inference rule used
+                - 'from': List of premise/step indices used
+                - 'result': The derived statement (optional)
+            label: Ground truth label (TRUE/FALSE/UNKNOWN)
+
+        Returns:
+            OptionizedTrace with structured proof steps
+        """
+        # Build initial state with premises
+        formulas = []
+        for i, (nl, fol) in enumerate(zip(premises, fol_premises)):
+            formulas.append(
+                FOLFormula(
+                    id=i,
+                    nl_text=nl,
+                    fol_string=fol,
+                    source="premise",
+                )
+            )
+
+        target_formula = FOLFormula(
+            id=-1,  # Special ID for target
+            nl_text=conclusion,
+            fol_string=fol_conclusion,
+            source="target",
+        )
+
+        initial_state = LogicalState(
+            problem_id=problem_id,
+            nl_premises=premises,
+            fol_formulas=formulas.copy(),
+            target_conclusion=conclusion,
+            target_fol=target_formula,
+            label=label,
+        )
+
+        # Convert proof steps
+        optionized_steps = []
+        next_formula_id = len(formulas)
+
+        for step_idx, step_data in enumerate(proof_steps):
+            step_nl = step_data.get("step", "")
+            rule_name = step_data.get("rule", "").lower().strip()
+            from_indices = step_data.get("from", [])
+            result_nl = step_data.get("result", "")
+            result_fol = step_data.get("result_fol", "")
+
+            # Map rule name to option type
+            option_type = self._map_rule_to_option(rule_name)
+            if option_type is None:
+                # Default to a generic inference if rule not recognized
+                option_type = OptionType.MODUS_PONENS
+
+            # Build option arguments
+            option_args = self._build_option_args(option_type, from_indices)
+
+            # Create result formula if this step derives something
+            result_formula = None
+            if result_nl or result_fol:
+                result_formula = FOLFormula(
+                    id=next_formula_id,
+                    nl_text=result_nl or step_nl,
+                    fol_string=result_fol or "",
+                    source="derived",
+                    derived_by=option_type.name,
+                    derived_from=from_indices,
+                )
+                next_formula_id += 1
+
+            proof_step = ProofStep(
+                step_idx=step_idx,
+                thought=step_nl,
+                option_type=option_type,
+                option_args=option_args,
+                result_formula=result_formula,
+            )
+            optionized_steps.append(proof_step)
+
+        # Add terminal CONCLUDE step
+        conclude_step = ProofStep(
+            step_idx=len(optionized_steps),
+            thought=f"Therefore, the conclusion is {label}.",
+            option_type=OptionType.CONCLUDE,
+            option_args=[self._label_to_int(label)],
+        )
+        optionized_steps.append(conclude_step)
+
+        return OptionizedTrace(
+            problem_id=problem_id,
+            initial_state=initial_state,
+            steps=optionized_steps,
+            final_answer=label,
+        )
+
+    def optionize_prontoqa_example(
+        self,
+        problem_id: str,
+        context: str,
+        query: str,
+        chain: list[str],
+        label: bool,
+    ) -> OptionizedTrace:
+        """
+        Convert a PrOntoQA example into an optionized trace.
+
+        PrOntoQA has simpler structure: a context, query, and reasoning chain.
+
+        Args:
+            problem_id: Unique identifier
+            context: The ontology context (facts and rules)
+            query: The question to answer
+            chain: List of reasoning steps
+            label: True/False answer
+
+        Returns:
+            OptionizedTrace
+        """
+        # Parse context into premises
+        premises = [s.strip() for s in context.split(".") if s.strip()]
+        fol_premises = [""] * len(premises)  # PrOntoQA doesn't provide FOL
+
+        formulas = []
+        for i, premise in enumerate(premises):
+            formulas.append(
+                FOLFormula(
+                    id=i,
+                    nl_text=premise,
+                    fol_string="",  # Will be filled by solver
+                    source="premise",
+                )
+            )
+
+        initial_state = LogicalState(
+            problem_id=problem_id,
+            nl_premises=premises,
+            fol_formulas=formulas.copy(),
+            target_conclusion=query,
+            label="TRUE" if label else "FALSE",
+        )
+
+        # Convert chain to proof steps
+        # PrOntoQA chains are typically simple modus ponens steps
+        optionized_steps = []
+        next_formula_id = len(formulas)
+
+        for step_idx, step_text in enumerate(chain):
+            # Heuristically determine the option type
+            option_type, option_args = self._infer_option_from_text(step_text, formulas)
+
+            result_formula = FOLFormula(
+                id=next_formula_id,
+                nl_text=step_text,
+                fol_string="",
+                source="derived",
+                derived_by=option_type.name,
+            )
+            next_formula_id += 1
+            formulas.append(result_formula)
+
+            proof_step = ProofStep(
+                step_idx=step_idx,
+                thought=step_text,
+                option_type=option_type,
+                option_args=option_args,
+                result_formula=result_formula,
+            )
+            optionized_steps.append(proof_step)
+
+        # Add terminal step
+        final_label = "TRUE" if label else "FALSE"
+        conclude_step = ProofStep(
+            step_idx=len(optionized_steps),
+            thought=f"Therefore, {query} is {final_label}.",
+            option_type=OptionType.CONCLUDE,
+            option_args=[0 if label else 1],
+        )
+        optionized_steps.append(conclude_step)
+
+        return OptionizedTrace(
+            problem_id=problem_id,
+            initial_state=initial_state,
+            steps=optionized_steps,
+            final_answer=final_label,
+        )
+
+    def _map_rule_to_option(self, rule_name: str) -> Optional[OptionType]:
+        """Map a P-FOLIO rule name to an OptionType."""
+        rule_name = rule_name.lower().strip()
+        return self.PFOLIO_RULE_MAP.get(rule_name)
+
+    def _build_option_args(
+        self, option_type: OptionType, from_indices: list[int]
+    ) -> list[int]:
+        """Build option arguments from source indices."""
+        # Ensure we have the right number of args
+        if len(from_indices) >= 2:
+            return from_indices[:2]
+        elif len(from_indices) == 1:
+            return from_indices + [0]  # Pad with default
+        else:
+            return [0, 0]  # Default args
+
+    def _infer_option_from_text(
+        self, text: str, formulas: list[FOLFormula]
+    ) -> tuple[OptionType, list[int]]:
+        """
+        Heuristically infer option type and args from step text.
+        
+        This is used for PrOntoQA where explicit rule labels aren't provided.
+        """
+        text_lower = text.lower()
+
+        # Check for common patterns
+        if "all" in text_lower or "every" in text_lower:
+            # Likely universal instantiation
+            return OptionType.UNIV_INSTANTIATION, [0, 0]
+        elif "therefore" in text_lower or "so" in text_lower:
+            # Likely modus ponens
+            return OptionType.MODUS_PONENS, [0, 1]
+        elif "not" in text_lower and "because" in text_lower:
+            # Might be modus tollens
+            return OptionType.MODUS_TOLLENS, [0, 1]
+        else:
+            # Default to modus ponens for simple chains
+            return OptionType.MODUS_PONENS, [0, 1]
+
+    def _label_to_int(self, label: str) -> int:
+        """Convert label string to integer for CONCLUDE option."""
+        label = label.upper().strip()
+        if label == "TRUE":
+            return 0
+        elif label == "FALSE":
+            return 1
+        else:
+            return 2  # UNKNOWN
+
+    def parse_trace_string(self, trace_str: str, problem_id: str = "") -> OptionizedTrace:
+        """
+        Parse a trace string (model output) back into an OptionizedTrace.
+        
+        Expected format:
+        Thought: <explanation>
+        Action: <Option type="..." args="[...]" />
+        ...
+        Final Answer: TRUE/FALSE/UNKNOWN
+        """
+        lines = trace_str.strip().split("\n")
+        steps = []
+        current_thought = ""
+        step_idx = 0
+        final_answer = "UNKNOWN"
+
+        for line in lines:
+            line = line.strip()
+
+            if line.startswith("Thought:"):
+                current_thought = line[8:].strip()
+
+            elif line.startswith("Action:"):
+                action_str = line[7:].strip()
+                try:
+                    step = ProofStep.from_action_string(
+                        action_str, step_idx, current_thought
+                    )
+                    steps.append(step)
+                    step_idx += 1
+                    current_thought = ""
+                except ValueError:
+                    continue
+
+            elif line.startswith("Final Answer:"):
+                final_answer = line[13:].strip().upper()
+
+        # Create minimal initial state (actual state would need to be provided)
+        initial_state = LogicalState(
+            problem_id=problem_id,
+            nl_premises=[],
+            fol_formulas=[],
+        )
+
+        return OptionizedTrace(
+            problem_id=problem_id,
+            initial_state=initial_state,
+            steps=steps,
+            final_answer=final_answer,
+        )
+
