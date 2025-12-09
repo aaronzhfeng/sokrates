@@ -1,0 +1,109 @@
+# Training Configuration for SOKRATES
+# ====================================
+# Optimized for: 1× NVIDIA H100 PCIe (80GB VRAM)
+# Estimated total training time: 3-4 hours
+
+# Supervised Fine-Tuning (SFT)
+sft:
+  output_dir: "outputs/sft"
+  num_epochs: 3
+  batch_size: 8              # H100: increased from 4
+  gradient_accumulation_steps: 4  # H100: decreased from 8 (effective batch = 32)
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  max_seq_length: 2048
+  
+  # Logging
+  logging_steps: 10
+  save_steps: 500
+  eval_steps: 500
+  
+  # Hardware
+  bf16: true
+  gradient_checkpointing: true
+  
+  # Data
+  train_split: 0.9
+
+# Direct Preference Optimization (DPO)
+dpo:
+  output_dir: "outputs/dpo"
+  beta: 0.1  # KL penalty coefficient
+  loss_type: "sigmoid"  # or "hinge"
+  
+  num_epochs: 1
+  batch_size: 4              # H100: increased from 2
+  gradient_accumulation_steps: 8  # H100: decreased from 16 (effective batch = 32)
+  learning_rate: 5.0e-6
+  warmup_ratio: 0.1
+  max_length: 2048
+  max_prompt_length: 1024
+  
+  # Logging
+  logging_steps: 10
+  save_steps: 200
+  
+  # Hardware
+  bf16: true
+
+# OaK Loop
+oak_loop:
+  output_dir: "outputs/oak_loop"
+  checkpoint_dir: "checkpoints"
+  
+  # Loop parameters
+  num_iterations: 3
+  samples_per_problem: 4     # H100: reduced from 8 for faster training (3-4 hrs total)
+  
+  # Option head training
+  train_option_head: true
+  option_head_lr: 1.0e-4
+  option_head_epochs: 3
+  
+  # Logging
+  log_calibration: true
+  save_traces: true
+
+# Trace generation during training
+trace_generation:
+  max_steps: 15
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+  max_thought_tokens: 150
+  max_action_tokens: 50
+  use_constrained_decoding: true
+  validate_steps: true
+
+# Preference pair construction
+preference_pairs:
+  require_valid_winner: true
+  max_pairs_per_problem: 10
+  min_validity_gap: 0.2  # Min gap in step validity between winner/loser
+
+# Experiment tracking
+wandb:
+  enabled: true
+  project: "sokrates"
+  entity: null  # Your wandb username/team
+  tags:
+    - "oak"
+    - "dpo"
+    - "logical-reasoning"
+
+# Hardware settings
+# Target: 1× NVIDIA H100 PCIe (80GB VRAM)
+hardware:
+  seed: 42
+  mixed_precision: "bf16"
+  gradient_checkpointing: true
+  num_workers: 4
+  
+  # H100-specific settings
+  gpu: "H100 PCIe"
+  vram: "80GB"
+  estimated_sft_time: "20-30 min"
+  estimated_oak_time: "2.5-3 hrs"
+  estimated_total_time: "3-4 hrs"
+  estimated_cost: "$7-10 @ $2.39/hr"
+

@@ -1,0 +1,64 @@
+# Model Configuration for SOKRATES
+# =================================
+# Optimized for: 1× NVIDIA H100 PCIe (80GB VRAM)
+
+# Base model settings
+model:
+  name: "meta-llama/Llama-3.1-8B-Instruct"
+  # Alternative: "Qwen/Qwen2.5-7B-Instruct"
+  torch_dtype: "bfloat16"
+  device_map: "auto"          # Single GPU: will use cuda:0
+  trust_remote_code: true
+  
+  # H100 optimizations
+  attn_implementation: "flash_attention_2"  # H100 supports FA2
+  use_cache: true
+
+# LoRA/PEFT settings
+peft:
+  enabled: true
+  method: "lora"
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+# Option success head (q̂_φ)
+option_head:
+  option_embed_dim: 64
+  mlp_hidden_dim: 512
+  dropout: 0.1
+  with_args: false  # Use OptionSuccessHeadWithArgs if true
+  max_formula_idx: 100  # For arg encoding
+
+# GVF heads (auxiliary subtasks)
+gvf_heads:
+  enabled: true
+  shared_dim: 256
+  head_dim: 64
+  dropout: 0.1
+
+# Generation settings
+generation:
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+  repetition_penalty: 1.1
+
+# Constrained decoding
+constrained_decoding:
+  enabled: true
+  max_formula_idx: 50
+  allow_empty_args: false
+  strict_arg_count: true
+

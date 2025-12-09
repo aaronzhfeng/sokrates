@@ -1,0 +1,87 @@
+# Evaluation Configuration for SOKRATES
+# ======================================
+
+# Evaluation settings
+evaluation:
+  output_dir: "outputs/evaluation"
+  
+  # Generation
+  num_samples: 1  # Traces per problem (1 for greedy eval)
+  greedy: true
+  temperature: 0.1  # Low temp for more deterministic eval
+  max_steps: 15
+  
+  # Metrics
+  compute_calibration: true
+  calibration_bins: 10
+  
+  # Per-option breakdown
+  per_option_analysis: true
+
+# Datasets to evaluate on
+datasets:
+  - name: "folio"
+    split: "test"
+    max_samples: null  # null = use all
+  
+  - name: "pfolio"
+    split: "test"
+    max_samples: null
+  
+  - name: "prontoqa"
+    split: "test"
+    max_samples: 500  # PrOntoQA is large
+
+# Ablation configurations
+ablations:
+  # Main model
+  full_model:
+    constrained_decoding: true
+    use_option_head: true
+    description: "Full SOKRATES model"
+  
+  # Without constrained decoding
+  no_constrained:
+    constrained_decoding: false
+    use_option_head: true
+    description: "Without grammar constraints"
+  
+  # Without option head
+  no_option_head:
+    constrained_decoding: true
+    use_option_head: false
+    description: "Without q̂_φ predictor"
+  
+  # Raw CoT (no optionization)
+  raw_cot:
+    constrained_decoding: false
+    use_option_head: false
+    optionized: false
+    description: "Standard chain-of-thought"
+
+# Baseline comparisons
+baselines:
+  # Zero-shot CoT
+  - name: "zero_shot_cot"
+    prompt_template: "Let's think step by step."
+  
+  # Few-shot CoT
+  - name: "few_shot_cot"
+    num_examples: 3
+  
+  # SFT only (no DPO)
+  - name: "sft_only"
+    checkpoint: "outputs/sft/final"
+
+# Report settings
+report:
+  format: "markdown"  # or "latex", "json"
+  include_examples: 5  # Number of example traces to include
+  plot_calibration_curve: true
+  plot_per_option_validity: true
+
+# Solver settings for verification
+solver:
+  timeout_ms: 5000
+  verify_all_traces: true
+
