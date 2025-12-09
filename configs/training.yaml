@@ -7,16 +7,17 @@
 sft:
   output_dir: "outputs/sft"
   num_epochs: 3
-  batch_size: 8              # H100: increased from 4
-  gradient_accumulation_steps: 4  # H100: decreased from 8 (effective batch = 32)
+  batch_size: 4              # Safe middle ground for H100 with 8B model
+  gradient_accumulation_steps: 8  # Effective batch = 32
   learning_rate: 2.0e-5
   warmup_ratio: 0.1
-  max_seq_length: 2048
+  max_seq_length: 1024       # Keep shorter for faster training
   
   # Logging
   logging_steps: 10
   save_steps: 500
   eval_steps: 500
+  save_total_limit: 2        # Keep only 2 checkpoints to save disk space
   
   # Hardware
   bf16: true

@@ -167,9 +167,9 @@ def setup_model_and_tokenizer(config: SFTConfig):
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
     
-    # Enable gradient checkpointing
+    # Enable gradient checkpointing AFTER applying LoRA
     if config.gradient_checkpointing:
-        model.gradient_checkpointing_enable()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     
     return model, tokenizer
 
@@ -207,10 +207,10 @@ def train_sft(
         logging_steps=config.logging_steps,
         save_steps=config.save_steps,
         eval_steps=config.eval_steps if val_dataset else None,
-        evaluation_strategy="steps" if val_dataset else "no",
+        eval_strategy="steps" if val_dataset else "no",  # renamed from evaluation_strategy
         save_total_limit=3,
         bf16=config.bf16,
-        report_to="wandb",
+        report_to="none",  # Use our custom logging; set to "wandb" if --wandb flag used
         remove_unused_columns=False,
     )
     

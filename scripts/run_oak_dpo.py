@@ -23,6 +23,7 @@ from src.training.dpo import DPOConfig
 from src.data.structures import LogicalState, FOLFormula
 from src.solvers.folio_solver import FOLIOSolver
 from src.solvers.prontoqa_solver import PrOntoQASolver
+from src.utils.logging import ExperimentLogger
 
 
 def load_config(config_path: str) -> dict:
@@ -162,17 +163,23 @@ def main():
     args = parser.parse_args()
     
     # Load config
-    print(f"Loading config from {args.config}")
     config = load_config(args.config)
     
-    # Build OaK config
+    # Set up experiment logging
     oak_config_dict = config.get("oak_loop", {})
     dpo_config_dict = config.get("dpo", {})
+    base_output_dir = args.output_dir or oak_config_dict.get("output_dir", "outputs/oak_dpo")
     
+    exp = ExperimentLogger("oak_dpo", base_dir=os.path.dirname(base_output_dir) or "outputs")
+    logger = exp.logger
+    
+    logger.info(f"Loading config from {args.config}")
+    
+    # Build DPO config - use experiment subdir
     dpo_config = DPOConfig(
         beta=dpo_config_dict.get("beta", 0.1),
         loss_type=dpo_config_dict.get("loss_type", "sigmoid"),
-        output_dir=args.output_dir or oak_config_dict.get("output_dir", "outputs/oak_loop"),
+        output_dir=str(exp.exp_dir / "dpo"),
         num_epochs=dpo_config_dict.get("num_epochs", 1),
         batch_size=dpo_config_dict.get("batch_size", 2),
         gradient_accumulation_steps=dpo_config_dict.get("gradient_accumulation_steps", 16),
@@ -183,11 +190,12 @@ def main():
         bf16=dpo_config_dict.get("bf16", True),
     )
     
+    # Build OaK config - use experiment dir
     oak_config = OaKLoopConfig(
         num_iterations=args.iterations or oak_config_dict.get("num_iterations", 3),
         samples_per_problem=args.samples or oak_config_dict.get("samples_per_problem", 8),
-        output_dir=args.output_dir or oak_config_dict.get("output_dir", "outputs/oak_loop"),
-        checkpoint_dir=oak_config_dict.get("checkpoint_dir", "checkpoints"),
+        output_dir=str(exp.exp_dir),
+        checkpoint_dir=str(exp.exp_dir / "checkpoints"),
         dpo_config=dpo_config,
         train_option_head=oak_config_dict.get("train_option_head", True),
         option_head_lr=oak_config_dict.get("option_head_lr", 1e-4),
@@ -196,24 +204,39 @@ def main():
         save_traces=oak_config_dict.get("save_traces", True),
     )
     
+    # Log experiment config
+    exp.log_config({
+        "model_name": args.sft_model,
+        "dataset": args.train_data,
+        "oak_iterations": oak_config.num_iterations,
+        "samples_per_problem": oak_config.samples_per_problem,
+        "dpo_beta": dpo_config.beta,
+        "learning_rate": dpo_config.learning_rate,
+        "extra": {
+            "dataset_type": args.dataset_type,
+            "val_data": args.val_data,
+            "train_option_head": oak_config.train_option_head,
+        }
+    })
+    
     # Load model
-    print(f"\nLoading SFT model from {args.sft_model}")
+    logger.info(f"Loading SFT model from {args.sft_model}")
     model, tokenizer = load_model_and_tokenizer(args.sft_model, config)
     
     # Load data
-    print(f"Loading training data from {args.train_data}")
+    logger.info(f"Loading training data from {args.train_data}")
     train_problems = load_problems(args.train_data)
-    print(f"Loaded {len(train_problems)} training problems")
+    logger.info(f"Loaded {len(train_problems)} training problems")
     
     val_problems = None
     if args.val_data:
-        print(f"Loading validation data from {args.val_data}")
+        logger.info(f"Loading validation data from {args.val_data}")
         val_problems = load_problems(args.val_data)
-        print(f"Loaded {len(val_problems)} validation problems")
+        logger.info(f"Loaded {len(val_problems)} validation problems")
     
     # Get solver
     solver = get_solver(args.dataset_type)
-    print(f"Using solver: {solver.get_solver_name()}")
+    logger.info(f"Using solver: {solver.get_solver_name()}")
     
     # Set up wandb
     if args.wandb:
@@ -223,6 +246,7 @@ def main():
             project=wandb_config.get("project", "sokrates"),
             entity=wandb_config.get("entity"),
             tags=wandb_config.get("tags", []) + ["oak-loop"],
+            name=f"oak_dpo_{exp.timestamp}",
             config={
                 "oak_config": oak_config.__dict__,
                 "dpo_config": dpo_config.__dict__,
@@ -231,12 +255,18 @@ def main():
             }
         )
     
-    # Run OaK loop
-    print("\nStarting OaK-DPO training loop...")
-    print(f"  Iterations: {oak_config.num_iterations}")
-    print(f"  Samples per problem: {oak_config.samples_per_problem}")
-    print(f"  Output: {oak_config.output_dir}")
+    # Log training start
+    logger.info("=" * 60)
+    logger.info("Starting OaK-DPO training loop")
+    logger.info("=" * 60)
+    logger.info(f"  SFT Model: {args.sft_model}")
+    logger.info(f"  Iterations: {oak_config.num_iterations}")
+    logger.info(f"  Samples per problem: {oak_config.samples_per_problem}")
+    logger.info(f"  DPO beta: {dpo_config.beta}")
+    logger.info(f"  Training problems: {len(train_problems)}")
+    logger.info(f"  Output: {oak_config.output_dir}")
     
+    # Run OaK loop
     summary = run_oak_pipeline(
         model=model,
         tokenizer=tokenizer,
@@ -246,8 +276,25 @@ def main():
         config=oak_config,
     )
     
-    print("\nOaK-DPO training complete!")
-    print(f"Summary saved to: {oak_config.output_dir}/training_summary.json")
+    # Log iteration metrics
+    for i, hist in enumerate(summary.get("history", [])):
+        exp.metrics.log_iteration(i, hist)
+    
+    # Finish experiment with final metrics
+    final_metrics = summary.get("final_calibration", {})
+    if summary.get("history"):
+        last_iter = summary["history"][-1]
+        final_metrics.update({
+            "final_valid_traces": last_iter.get("valid_traces", 0),
+            "final_valid_steps": last_iter.get("valid_steps", 0),
+        })
+        if "val_metrics" in last_iter:
+            final_metrics["val_accuracy"] = last_iter["val_metrics"].get("accuracy")
+    
+    exp.log_artifact("training_summary", summary)
+    exp.finish(final_metrics)
+    
+    logger.info(f"Final model checkpoint: {oak_config.checkpoint_dir}/iter_{oak_config.num_iterations - 1}")
 
 
 if __name__ == "__main__":

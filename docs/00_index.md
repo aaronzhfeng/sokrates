@@ -18,6 +18,7 @@ A neuro-symbolic approach to logical reasoning that instantiates Sutton's Option
 | [06 - Glossary](06_glossary.md) | Definitions of key terms and concepts |
 | [07 - Implementation Guide](07_implementation_guide.md) | Complete code walkthrough with examples |
 | [08 - API Reference](08_api_reference.md) | Full API documentation for all modules |
+| [09 - Session Log](09_session_log.md) | Development progress, changes, and lessons learned |
 
 ---
 
@@ -103,27 +104,40 @@ SOKRATES represents proofs as sequences of **discrete reasoning options** (infer
 
 ---
 
-## Quick Start (Future)
+## Quick Start
 
 ```bash
 # Clone repository
-git clone https://github.com/[user]/sokrates.git
+git clone https://github.com/sokrates-project/sokrates.git
 cd sokrates
 
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
 # Install dependencies
-pip install -e .
+pip install -e ".[dev]"
 
-# Prepare data
-python scripts/prepare_data.py
+# Prepare data (downloads FOLIO and PrOntoQA)
+python scripts/prepare_data.py --raw-dir data/raw --output-dir data/processed
 
-# Run SFT
-python scripts/train_sft.py --config configs/sft.yaml
+# Run SFT training
+python scripts/train_sft.py \
+    --config configs/training.yaml \
+    --data data/processed/prontoqa_train.jsonl
 
-# Run OaK-DPO loop
-python scripts/run_oak_dpo.py --config configs/oak_dpo.yaml
+# Run OaK-DPO loop (after SFT)
+python scripts/run_oak_dpo.py \
+    --config configs/training.yaml \
+    --sft-model outputs/sft/latest/final \
+    --train-data data/processed/prontoqa_train.jsonl \
+    --iterations 3
 
 # Evaluate
-python scripts/evaluate.py --model checkpoints/final --output results/
+python scripts/evaluate.py \
+    --model outputs/sft/latest/final \
+    --data data/processed/prontoqa_test.jsonl \
+    --dataset-type prontoqa
 ```
 
 ---

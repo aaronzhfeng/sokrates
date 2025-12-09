@@ -4,8 +4,9 @@
 
 # Base model settings
 model:
-  name: "meta-llama/Llama-3.1-8B-Instruct"
-  # Alternative: "Qwen/Qwen2.5-7B-Instruct"
+  # name: "meta-llama/Llama-3.1-8B-Instruct"  # Gated - requires HF login
+  # name: "Qwen/Qwen2.5-7B-Instruct"  # Previous default
+  name: "Qwen/Qwen3-8B"  # Qwen3 with enhanced reasoning capabilities (active)
   torch_dtype: "bfloat16"
   device_map: "auto"          # Single GPU: will use cuda:0
   trust_remote_code: true

@@ -20,12 +20,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.training.sft import SFTConfig, run_sft_pipeline
 from src.data.structures import OptionizedTrace, LogicalState, ProofStep, OptionType
+from src.utils.logging import ExperimentLogger
 
 
 def load_config(config_path: str) -> dict:
-    """Load configuration from YAML file."""
+    """Load configuration from YAML file, including model config."""
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    
+    # Also load model config if it exists
+    config_dir = Path(config_path).parent
+    model_config_path = config_dir / "model.yaml"
+    if model_config_path.exists():
+        with open(model_config_path) as f:
+            model_config = yaml.safe_load(f)
+            # Merge model config (model.yaml takes precedence)
+            if "model" in model_config:
+                config["model"] = model_config["model"]
+            if "peft" in model_config:
+                config["peft"] = model_config["peft"]
+    
+    return config
 
 
 def load_training_data(data_path: str) -> list[OptionizedTrace]:
@@ -127,14 +142,27 @@ def main():
     args = parser.parse_args()
     
     # Load config
-    print(f"Loading config from {args.config}")
     config = load_config(args.config)
     sft_config = config.get("sft", {})
     
-    # Create SFTConfig
+    # Set up experiment logging
+    base_output_dir = args.output_dir or sft_config.get("output_dir", "outputs/sft")
+    exp = ExperimentLogger("sft", base_dir=os.path.dirname(base_output_dir) or "outputs")
+    logger = exp.logger
+    
+    logger.info(f"Loading config from {args.config}")
+    
+    # Get model name from config (no hardcoded fallback)
+    model_name = args.model or config.get("model", {}).get("name")
+    if not model_name:
+        logger.error("No model name specified in config or --model argument!")
+        logger.error("Please set 'model.name' in configs/model.yaml")
+        sys.exit(1)
+    
+    # Create SFTConfig - use experiment dir as output
     training_config = SFTConfig(
-        model_name=args.model or config.get("model", {}).get("name", "meta-llama/Llama-3.1-8B-Instruct"),
-        output_dir=args.output_dir or sft_config.get("output_dir", "outputs/sft"),
+        model_name=model_name,
+        output_dir=str(exp.exp_dir),
         num_epochs=args.epochs or sft_config.get("num_epochs", 3),
         batch_size=args.batch_size or sft_config.get("batch_size", 4),
         gradient_accumulation_steps=sft_config.get("gradient_accumulation_steps", 8),
@@ -160,10 +188,25 @@ def main():
             "gate_proj", "up_proj", "down_proj"
         ])
     
+    # Log experiment config
+    exp.log_config({
+        "model_name": training_config.model_name,
+        "dataset": args.data,
+        "num_epochs": training_config.num_epochs,
+        "batch_size": training_config.batch_size,
+        "learning_rate": training_config.learning_rate,
+        "extra": {
+            "gradient_accumulation_steps": training_config.gradient_accumulation_steps,
+            "max_seq_length": training_config.max_seq_length,
+            "use_peft": training_config.use_peft,
+            "lora_r": training_config.lora_r if training_config.use_peft else None,
+        }
+    })
+    
     # Load training data
-    print(f"Loading training data from {args.data}")
+    logger.info(f"Loading training data from {args.data}")
     traces = load_training_data(args.data)
-    print(f"Loaded {len(traces)} training traces")
+    logger.info(f"Loaded {len(traces)} training traces")
     
     # Set up wandb
     if args.wandb:
@@ -172,25 +215,46 @@ def main():
         wandb.init(
             project=wandb_config.get("project", "sokrates"),
             entity=wandb_config.get("entity"),
-            tags=wandb_config.get("tags", []),
+            tags=wandb_config.get("tags", []) + ["sft"],
+            name=f"sft_{exp.timestamp}",
             config={
                 "training_config": training_config.__dict__,
                 "num_traces": len(traces),
             }
         )
     
-    # Run SFT
-    print("\nStarting SFT training...")
-    print(f"  Model: {training_config.model_name}")
-    print(f"  Output: {training_config.output_dir}")
-    print(f"  Epochs: {training_config.num_epochs}")
-    print(f"  Batch size: {training_config.batch_size}")
-    print(f"  Learning rate: {training_config.learning_rate}")
+    # Log training start
+    logger.info("=" * 60)
+    logger.info("Starting SFT training")
+    logger.info("=" * 60)
+    logger.info(f"  Model: {training_config.model_name}")
+    logger.info(f"  Output: {training_config.output_dir}")
+    logger.info(f"  Epochs: {training_config.num_epochs}")
+    logger.info(f"  Batch size: {training_config.batch_size}")
+    logger.info(f"  Learning rate: {training_config.learning_rate}")
+    logger.info(f"  Training traces: {len(traces)}")
     
+    # Run SFT
     model, tokenizer, trainer = run_sft_pipeline(traces, training_config)
     
-    print("\nSFT training complete!")
-    print(f"Model saved to: {training_config.output_dir}/final")
+    # Log final metrics
+    final_metrics = {}
+    if trainer.state.log_history:
+        # Get last logged metrics
+        for log_entry in reversed(trainer.state.log_history):
+            if "loss" in log_entry:
+                final_metrics["final_loss"] = log_entry.get("loss")
+                break
+        if "eval_loss" in trainer.state.log_history[-1]:
+            final_metrics["final_eval_loss"] = trainer.state.log_history[-1]["eval_loss"]
+    
+    # Save training history
+    exp.log_artifact("training_history", trainer.state.log_history)
+    
+    # Finish experiment
+    exp.finish(final_metrics)
+    
+    logger.info(f"Model saved to: {training_config.output_dir}/final")
 
 
 if __name__ == "__main__":
