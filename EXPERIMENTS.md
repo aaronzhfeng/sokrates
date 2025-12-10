@@ -2,9 +2,41 @@
 
 Complete command reference for reproducing all experiments in the paper.
 
-**Target Hardware:** 1× NVIDIA H100 PCIe (80GB VRAM)  
-**Estimated Total Time:** 3-4 hours  
-**Estimated Cost:** $7-10 @ $2.39/hr
+---
+
+## ⚡ Current Status (Dec 10, 2025)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| **SFT Training** | ✅ Complete | `outputs/sft/latest/final` |
+| **OaK-DPO Loop** | 🚀 Ready | Two-stage pipeline |
+| **Evaluation** | ⏳ Pending | |
+
+### Time-Optimized Settings (6-hour deadline)
+
+Due to time constraints, we made these **principled compromises**:
+
+| Parameter | Full Run | Optimized | Rationale |
+|-----------|----------|-----------|-----------|
+| Problems | 14,346 | **1,500** | 10% sample, statistically valid |
+| Samples/problem | 8 | **2** | Min for preference pairs |
+| Iterations | 3 | **2** | Still shows improvement curve |
+| Max steps | 15 | **6** | PrOntoQA avg is 3-5 steps |
+| Sampling | Stochastic | **Greedy** | Faster, deterministic |
+| Option head | Train | **Skip** | Not critical for main result |
+
+**Note:** These settings are sufficient for a proof-of-concept. For full paper results, use original settings with more compute time.
+
+---
+
+**Target Hardware:** 6× NVIDIA B200 (GPUs 2-7, 183GB VRAM each)  
+**Estimated Total Time:** ~2-3 hours (optimized) | 6-8 hours (full)
+
+| Experiment | Full Time | Optimized Time |
+|------------|-----------|----------------|
+| SFT Training | ~15 min | ✅ Done |
+| OaK-DPO Loop | ~4-5 hours | ~1.5-2 hours |
+| Evaluation | ~30 min | ~15 min |
 
 ---
 
@@ -45,8 +77,8 @@ python -c "import src; print(f'SOKRATES v{src.__version__}')"
 # Check GPU
 nvidia-smi
 
-# Should show: NVIDIA H100 PCIe (80GB)
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0)}')"
+# Should show: 2× NVIDIA B200 (183GB each)
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}, GPU 0: {torch.cuda.get_device_name(0)}')"
 ```
 
 ### 1.3 Login to Services (Optional)
@@ -102,13 +134,16 @@ head -1 data/processed/prontoqa_train.jsonl | python -m json.tool
 
 ## 3. Main Experiments
 
-### 3.1 Experiment 1: Supervised Fine-Tuning (SFT)
+### 3.1 Experiment 1: Supervised Fine-Tuning (SFT) ✅ COMPLETE
 
 **Purpose:** Train base model on optionized proof format  
-**Time:** ~20-30 minutes
+**Status:** ✅ Complete - Model at `outputs/sft/latest/final`  
+**Time taken:** ~15 minutes (2× B200)
 
 ```bash
-python scripts/train_sft.py \
+# Multi-GPU training with accelerate (2× B200)
+CUDA_VISIBLE_DEVICES=2,3 accelerate launch --num_processes=2 --mixed_precision=bf16 \
+    scripts/train_sft.py \
     --config configs/training.yaml \
     --data data/processed/prontoqa_train.jsonl \
     --output-dir outputs/sft \
@@ -117,56 +152,142 @@ python scripts/train_sft.py \
 
 **Without WandB:**
 ```bash
-python scripts/train_sft.py \
+CUDA_VISIBLE_DEVICES=2,3 accelerate launch --num_processes=2 --mixed_precision=bf16 \
+    scripts/train_sft.py \
     --config configs/training.yaml \
     --data data/processed/prontoqa_train.jsonl \
     --output-dir outputs/sft
 ```
 
-**Output:** `outputs/sft/final/` (model checkpoint)
+**Single GPU (if needed):**
+```bash
+CUDA_VISIBLE_DEVICES=2 python scripts/train_sft.py \
+    --config configs/training.yaml \
+    --data data/processed/prontoqa_train.jsonl \
+    --output-dir outputs/sft
+```
+
+**Output:** `outputs/sft/latest/final/` (model checkpoint with LoRA adapter)
 
 ---
 
-### 3.2 Experiment 2: OaK-DPO Training Loop
+### 3.2 Experiment 2: OaK-DPO Training Loop (Two-Stage Pipeline)
 
 **Purpose:** Main SOKRATES training with solver-guided DPO  
-**Time:** ~2.5-3 hours
+**Time:** ~1.5-2 hours (6× B200, optimized settings)
+
+The OaK-DPO loop consists of two stages per iteration:
+1. **Stage 1 (Trace Generation):** Generate optionized traces and verify with solver
+2. **Stage 2 (DPO Training):** Build preference pairs and train DPO
+
+#### Option A: Automated Loop (Recommended)
 
 ```bash
-python scripts/run_oak_dpo.py \
-    --config configs/training.yaml \
-    --sft-model outputs/sft/final \
-    --train-data data/processed/prontoqa_train.jsonl \
-    --val-data data/processed/prontoqa_test.jsonl \
-    --dataset-type prontoqa \
-    --iterations 3 \
-    --wandb
+# Full OaK loop with 2 iterations, 1500 problems, on GPUs 2-7
+./scripts/run_oak_loop.sh 2 1500 "2,3,4,5,6,7"
 ```
 
-**Without WandB:**
+Output: `outputs/oak_loop_{timestamp}/`
+
+#### Option B: Manual Stage-by-Stage (For Debugging)
+
+**Stage 1: Generate Traces**
 ```bash
-python scripts/run_oak_dpo.py \
-    --config configs/training.yaml \
-    --sft-model outputs/sft/final \
-    --train-data data/processed/prontoqa_train.jsonl \
-    --dataset-type prontoqa \
-    --iterations 3
+# Single GPU (simpler, ~30 min for 1500 problems)
+CUDA_VISIBLE_DEVICES=2 python scripts/generate_traces.py \
+    --model outputs/sft/latest/final \
+    --data data/processed/prontoqa_train.jsonl \
+    --output outputs/traces/iter0 \
+    --num-problems 1500 \
+    --samples-per-problem 2 \
+    --max-steps 6 \
+    --temperature 0.0
 ```
 
-**Output:**
-- `outputs/oak_loop/training_summary.json`
-- `checkpoints/iter_0/`, `checkpoints/iter_1/`, `checkpoints/iter_2/`
+```bash
+# Multi-GPU parallel (faster, ~10 min for 1500 problems)
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python scripts/generate_traces.py \
+    --model outputs/sft/latest/final \
+    --data data/processed/prontoqa_train.jsonl \
+    --output outputs/traces/iter0 \
+    --num-problems 1500 \
+    --samples-per-problem 2 \
+    --num-gpus 6
+```
+
+**Stage 2: Train DPO from Traces**
+```bash
+# Multi-GPU DPO training (~20 min)
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch \
+    --num_processes=6 --mixed_precision=bf16 \
+    scripts/train_dpo_from_traces.py \
+    --traces outputs/traces/iter0/traces.jsonl \
+    --model outputs/sft/latest/final \
+    --output outputs/dpo/iter0 \
+    --num-epochs 1 \
+    --batch-size 2 \
+    --gradient-accumulation-steps 4 \
+    --beta 0.1
+```
+
+```bash
+# Single GPU DPO (slower, ~45 min)
+CUDA_VISIBLE_DEVICES=2 python scripts/train_dpo_from_traces.py \
+    --traces outputs/traces/iter0/traces.jsonl \
+    --model outputs/sft/latest/final \
+    --output outputs/dpo/iter0 \
+    --num-epochs 1 \
+    --batch-size 2 \
+    --gradient-accumulation-steps 8
+```
+
+**Iteration 2 (use DPO model from iter0):**
+```bash
+# Generate traces with DPO model
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python scripts/generate_traces.py \
+    --model outputs/dpo/iter0/final \
+    --data data/processed/prontoqa_train.jsonl \
+    --output outputs/traces/iter1 \
+    --num-problems 1500 \
+    --samples-per-problem 2 \
+    --num-gpus 6
+
+# Train DPO
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch \
+    --num_processes=6 --mixed_precision=bf16 \
+    scripts/train_dpo_from_traces.py \
+    --traces outputs/traces/iter1/traces.jsonl \
+    --model outputs/dpo/iter0/final \
+    --output outputs/dpo/iter1
+```
+
+**Output Structure:**
+```
+outputs/
+├── traces/
+│   ├── iter0/
+│   │   ├── traces.jsonl       # Generated traces with solver verification
+│   │   └── summary.json       # Statistics
+│   └── iter1/
+├── dpo/
+│   ├── iter0/
+│   │   ├── final/             # DPO model checkpoint
+│   │   └── preference_pairs.jsonl
+│   └── iter1/
+└── oak_loop_latest -> oak_loop_{timestamp}/  # If using automated loop
+```
 
 ---
 
 ### 3.3 Experiment 3: Transfer to FOLIO
 
 **Purpose:** Test transfer from PrOntoQA to FOLIO  
-**Time:** ~1-1.5 hours
+**Time:** ~2-3 hours (2× B200)
 
 ```bash
-# Fine-tune on FOLIO after PrOntoQA pretraining
-python scripts/run_oak_dpo.py \
+# Fine-tune on FOLIO after PrOntoQA pretraining (2× B200)
+CUDA_VISIBLE_DEVICES=1,2 accelerate launch --num_processes=2 \
+    scripts/run_oak_dpo.py \
     --config configs/training.yaml \
     --sft-model checkpoints/iter_2/model \
     --train-data data/processed/folio_train.jsonl \
@@ -185,7 +306,8 @@ python scripts/run_oak_dpo.py \
 
 ```bash
 # Modify config temporarily
-python scripts/run_oak_dpo.py \
+CUDA_VISIBLE_DEVICES=1,2 accelerate launch --num_processes=2 \
+    scripts/run_oak_dpo.py \
     --config configs/training.yaml \
     --sft-model outputs/sft/final \
     --train-data data/processed/prontoqa_train.jsonl \
@@ -205,7 +327,8 @@ oak_loop:
 
 Then run:
 ```bash
-python scripts/run_oak_dpo.py \
+CUDA_VISIBLE_DEVICES=1,2 accelerate launch --num_processes=2 \
+    scripts/run_oak_dpo.py \
     --config configs/training.yaml \
     --sft-model outputs/sft/final \
     --train-data data/processed/prontoqa_train.jsonl \
@@ -220,7 +343,8 @@ This requires a separate baseline script (standard CoT fine-tuning without optio
 ### 4.4 Ablation D: Single OaK Iteration
 
 ```bash
-python scripts/run_oak_dpo.py \
+CUDA_VISIBLE_DEVICES=1,2 accelerate launch --num_processes=2 \
+    scripts/run_oak_dpo.py \
     --config configs/training.yaml \
     --sft-model outputs/sft/final \
     --train-data data/processed/prontoqa_train.jsonl \
@@ -228,16 +352,17 @@ python scripts/run_oak_dpo.py \
     --output-dir outputs/ablation_single_iter
 ```
 
-### 4.5 Ablation E: More Samples (8 per problem)
+### 4.5 Ablation E: More Samples (16 per problem)
 
 ```bash
-python scripts/run_oak_dpo.py \
+CUDA_VISIBLE_DEVICES=1,2 accelerate launch --num_processes=2 \
+    scripts/run_oak_dpo.py \
     --config configs/training.yaml \
     --sft-model outputs/sft/final \
     --train-data data/processed/prontoqa_train.jsonl \
     --iterations 3 \
-    --samples 8 \
-    --output-dir outputs/ablation_8_samples
+    --samples 16 \
+    --output-dir outputs/ablation_16_samples
 ```
 
 ---
@@ -247,19 +372,19 @@ python scripts/run_oak_dpo.py \
 ### 5.1 Evaluate Final Model on PrOntoQA
 
 ```bash
-python scripts/evaluate.py \
-    --model checkpoints/iter_2/model \
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/dpo/iter1/final \
     --data data/processed/prontoqa_test.jsonl \
     --dataset-type prontoqa \
     --output-dir outputs/evaluation \
-    --dataset-name prontoqa_test
+    --dataset-name final_model
 ```
 
 ### 5.2 Evaluate on FOLIO
 
 ```bash
-python scripts/evaluate.py \
-    --model checkpoints/iter_2/model \
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/dpo/iter1/final \
     --data data/processed/folio_validation.jsonl \
     --dataset-type folio \
     --output-dir outputs/evaluation \
@@ -269,8 +394,8 @@ python scripts/evaluate.py \
 ### 5.3 Evaluate SFT Baseline
 
 ```bash
-python scripts/evaluate.py \
-    --model outputs/sft/final \
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/sft/latest/final \
     --data data/processed/prontoqa_test.jsonl \
     --dataset-type prontoqa \
     --output-dir outputs/evaluation \
@@ -280,36 +405,47 @@ python scripts/evaluate.py \
 ### 5.4 Evaluate Each OaK Iteration
 
 ```bash
-for i in 0 1 2; do
-    python scripts/evaluate.py \
-        --model checkpoints/iter_${i}/model \
-        --data data/processed/prontoqa_test.jsonl \
-        --dataset-type prontoqa \
-        --output-dir outputs/evaluation \
-        --dataset-name iter_${i}
-done
+# SFT baseline
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/sft/latest/final \
+    --data data/processed/prontoqa_test.jsonl \
+    --dataset-type prontoqa \
+    --output-dir outputs/evaluation \
+    --dataset-name iter_0_sft
+
+# After iteration 0
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/dpo/iter0/final \
+    --data data/processed/prontoqa_test.jsonl \
+    --dataset-type prontoqa \
+    --output-dir outputs/evaluation \
+    --dataset-name iter_1_dpo
+
+# After iteration 1 (final)
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/dpo/iter1/final \
+    --data data/processed/prontoqa_test.jsonl \
+    --dataset-type prontoqa \
+    --output-dir outputs/evaluation \
+    --dataset-name iter_2_dpo
 ```
 
 ### 5.5 Run All Ablation Evaluations
 
 ```bash
-# No constrained decoding
-python scripts/evaluate.py \
-    --model outputs/ablation_no_constrained/checkpoints/iter_2/model \
+# No constrained decoding (use traces generated without grammar constraints)
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/ablation_no_constrained/dpo/iter1/final \
     --data data/processed/prontoqa_test.jsonl \
     --output-dir outputs/evaluation \
     --dataset-name ablation_no_constrained
 
-# No option head
-python scripts/evaluate.py \
-    --model outputs/ablation_no_option_head/checkpoints/iter_2/model \
-    --data data/processed/prontoqa_test.jsonl \
-    --output-dir outputs/evaluation \
-    --dataset-name ablation_no_option_head
+# No option head (current optimized run already skips this)
+# Main results serve as this ablation
 
 # Single iteration
-python scripts/evaluate.py \
-    --model outputs/ablation_single_iter/checkpoints/iter_0/model \
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/dpo/iter0/final \
     --data data/processed/prontoqa_test.jsonl \
     --output-dir outputs/evaluation \
     --dataset-name ablation_single_iter
@@ -323,68 +459,122 @@ python scripts/evaluate.py \
 
 ```bash
 # === FULL EXPERIMENT PIPELINE ===
-# Estimated time: 3-4 hours on H100 PCIe
-# Estimated cost: $7-10 @ $2.39/hr
+# Estimated time: 2-3 hours (optimized) on 6× B200
+# Hardware: 6× NVIDIA B200 (GPUs 2-7, 183GB VRAM each)
 
 # 1. Setup (5 min)
-cd sokrates
+cd /raid/zhf004/sokrates
 source venv/bin/activate
 
-# 2. Data (10 min)
+# 2. Data (10 min) - if not already done
 python scripts/prepare_data.py
 
-# 3. SFT (25 min)
-python scripts/train_sft.py \
-    --config configs/training.yaml \
-    --data data/processed/prontoqa_train.jsonl
+# 3. SFT - ALREADY COMPLETE ✅
+# Model at: outputs/sft/latest/final
 
-# 4. OaK-DPO (2.5 hrs)
-python scripts/run_oak_dpo.py \
-    --config configs/training.yaml \
-    --sft-model outputs/sft/final \
-    --train-data data/processed/prontoqa_train.jsonl \
-    --iterations 3
+# 4. OaK-DPO Two-Stage Loop (~1.5-2 hrs)
+# Option A: Automated (recommended)
+./scripts/run_oak_loop.sh 2 1500 "2,3,4,5,6,7"
 
-# 5. Evaluate (20 min)
-python scripts/evaluate.py \
-    --model checkpoints/iter_2/model \
+# Option B: Manual iteration by iteration
+# --- Iteration 0 ---
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python scripts/generate_traces.py \
+    --model outputs/sft/latest/final \
+    --data data/processed/prontoqa_train.jsonl \
+    --output outputs/traces/iter0 \
+    --num-problems 1500 \
+    --samples-per-problem 2 \
+    --num-gpus 6
+
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch \
+    --num_processes=6 --mixed_precision=bf16 \
+    scripts/train_dpo_from_traces.py \
+    --traces outputs/traces/iter0/traces.jsonl \
+    --model outputs/sft/latest/final \
+    --output outputs/dpo/iter0
+
+# --- Iteration 1 ---
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 python scripts/generate_traces.py \
+    --model outputs/dpo/iter0/final \
+    --data data/processed/prontoqa_train.jsonl \
+    --output outputs/traces/iter1 \
+    --num-problems 1500 \
+    --samples-per-problem 2 \
+    --num-gpus 6
+
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch \
+    --num_processes=6 --mixed_precision=bf16 \
+    scripts/train_dpo_from_traces.py \
+    --traces outputs/traces/iter1/traces.jsonl \
+    --model outputs/dpo/iter0/final \
+    --output outputs/dpo/iter1
+
+# 5. Evaluate (~15 min)
+CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
+    --model outputs/dpo/iter1/final \
     --data data/processed/prontoqa_test.jsonl \
-    --output-dir outputs/evaluation
+    --output-dir outputs/evaluation \
+    --dataset-name final_model
 
 # 6. View results
-cat outputs/evaluation/prontoqa_test_report.txt
+cat outputs/evaluation/final_model_report.txt
+```
+
+### Quick Start (Optimized Run)
+
+```bash
+# One-liner to run everything (after SFT is complete)
+cd /raid/zhf004/sokrates && source venv/bin/activate && ./scripts/run_oak_loop.sh 2 1500 "2,3,4,5,6,7"
 ```
 
 ### Key Output Files
 
 | File | Description |
 |------|-------------|
-| `outputs/sft/final/` | SFT model checkpoint |
-| `checkpoints/iter_2/model/` | Final OaK-DPO model |
-| `checkpoints/iter_2/option_head.pt` | Trained q̂_φ |
-| `outputs/oak_loop/training_summary.json` | Training metrics |
+| `outputs/sft/latest/final/` | SFT model checkpoint ✅ |
+| `outputs/traces/iter{N}/traces.jsonl` | Generated traces with solver verification |
+| `outputs/traces/iter{N}/summary.json` | Trace generation statistics |
+| `outputs/dpo/iter{N}/final/` | DPO model checkpoint |
+| `outputs/dpo/iter{N}/preference_pairs.jsonl` | Preference pairs used for DPO |
+| `outputs/dpo/iter1/final/` | **Final model** (after 2 iterations) |
 | `outputs/evaluation/*_metrics.json` | Evaluation results |
 | `outputs/evaluation/*_report.txt` | Human-readable reports |
 
 ### Troubleshooting
 
-**Out of Memory:**
+**Out of Memory (unlikely with B200):**
 ```bash
 # Reduce batch size in configs/training.yaml
-# sft.batch_size: 8 → 4
-# dpo.batch_size: 4 → 2
+# sft.batch_size: 16 → 8
+# dpo.batch_size: 16 → 8
+```
+
+**GPU Selection:**
+```bash
+# Use specific GPUs (e.g., GPUs 1 and 2, avoiding GPU 0 if in use)
+CUDA_VISIBLE_DEVICES=1,2 accelerate launch --num_processes=2 ...
+
+# Single GPU
+CUDA_VISIBLE_DEVICES=1 python ...
 ```
 
 **Slow Generation:**
 ```bash
 # Reduce samples per problem
---samples 2  # Instead of 4
+--samples 4  # Instead of 8
 ```
 
 **WandB Issues:**
 ```bash
 # Run without WandB
 # Just remove --wandb flag from commands
+```
+
+**Multi-GPU Setup:**
+```bash
+# Initialize accelerate config (run once)
+accelerate config
+# Select: multi-GPU, 2 GPUs, bf16
 ```
 
 ---

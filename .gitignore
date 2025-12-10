@@ -19,20 +19,26 @@ eggs/
 venv/
 env/
 .venv/
-.env/
 
 # Data (users download via scripts/prepare_data.py)
-data/raw/
-data/processed/
+data/
 
-# Training outputs and checkpoints
+# Training outputs and checkpoints (large files!)
 outputs/
 checkpoints/
 
-# Model cache (downloaded from HuggingFace)
-.cache/
+# BUT keep committed results (metrics, summaries, figures)
+!results/
+
+# Model weights (very large!)
 *.bin
 *.safetensors
+*.gguf
+*.ggml
+
+# HuggingFace cache
+.cache/
+~/.cache/huggingface/
 
 # Jupyter notebooks
 .ipynb_checkpoints/
@@ -49,8 +55,9 @@ checkpoints/
 .DS_Store
 Thumbs.db
 
-# Logs (keep structure, ignore contents)
+# Logs
 *.log
+logs/
 
 # Weights & Biases
 wandb/
@@ -67,4 +74,32 @@ htmlcov/
 *.pem
 *.key
 secrets.yaml
+
+# Temp files
+*.tmp
+*.temp
+*.bak
+
+# Pip install artifacts (from bad command like: pip install pkg>=0.6.0)
+=*
+
+# Paper build artifacts (keep source, ignore compiled)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.out
+paper/*.synctex.gz
+paper/*.toc
+paper/*.lof
+paper/*.lot
+paper/*.nav
+paper/*.snm
+paper/*.vrb
+
+# Large paper assets (if any)
+paper/figures/*.png
+paper/figures/*.pdf
+!paper/figures/*.tex
 

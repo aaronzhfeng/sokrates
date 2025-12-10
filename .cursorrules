@@ -1,0 +1,21 @@
+# SOKRATES Project Rules
+
+## Training Commands
+- DO NOT automatically run training commands (SFT, DPO, trace generation)
+- Only provide commands for the user to run manually
+- User will execute training when ready
+
+## Documentation
+- Keep docs/ files numerically ordered (00_, 01_, 02_, etc.)
+- Update 00_index.md when adding new docs
+
+## Hardware
+- Available GPUs: 0-7 (B200, 183GB each)
+- GPU 0 is often occupied - prefer GPUs 2-7
+- Use CUDA_VISIBLE_DEVICES to select GPUs
+
+## Key Paths
+- SFT model: outputs/sft/latest/final
+- Training data: data/processed/prontoqa_train.jsonl
+- Test data: data/processed/prontoqa_test.jsonl
+
