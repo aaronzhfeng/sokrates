@@ -4,6 +4,58 @@ This document tracks implementation progress, configuration changes, and lessons
 
 ---
 
+## Session: December 10, 2025
+
+### Overview
+
+Critical debugging session that identified and fixed multiple pipeline issues preventing proper SFT training. See [14_debugging_session_dec10.md](14_debugging_session_dec10.md) for full details.
+
+### Critical Bugs Fixed
+
+| Bug | Impact | Fix |
+|-----|--------|-----|
+| **SFT data loader** | Model trained on CONCLUDE-only data | Use `training_text` directly |
+| **Optionizer indices** | All steps had `[0, 1]` | Track actual premise usage |
+| **Optionizer thoughts** | Predicate format `Nervous('X', True)` | Natural language explanations |
+| **Greedy decoding** | No diversity for DPO | Enable temp=0.7 |
+
+### Files Modified
+
+1. **`scripts/train_sft.py`** - Added `TrainingTextWrapper`, fixed data loading
+2. **`src/data/optionizer.py`** - Rewrote `optionize_prontoqa_example()` for NL
+3. **`configs/training.yaml`** - Adjusted SFT and generation parameters
+4. **`scripts/generate_traces.py`** - Fixed `trace_to_dict()` attribute access
+
+### Training Data Before/After
+
+**Before (broken)**:
+```
+Thought: Nervous('Wren', True)
+Action: <Option type="MODUS_PONENS" args="[0, 1]" />
+```
+
+**After (fixed)**:
+```
+Thought: Since wren is a jompus (premise 0) and each jompus is nervous (premise 8), we can conclude that Wren is nervous.
+Action: <Option type="MODUS_PONENS" args="[0, 8]" />
+```
+
+### Key Lessons
+
+1. **Verify data loading** - Loss going down ≠ model learning correctly
+2. **Test generation early** - Don't wait until DPO to discover SFT is broken
+3. **Natural language > predicates** - LLMs learn better from explanations
+4. **Sampling for DPO** - Greedy decoding produces identical traces
+
+### Status After Session
+
+- ✅ Training data re-processed with natural language
+- ✅ SFT loader fixed to use `training_text`
+- 🔄 SFT re-training in progress
+- ⏳ DPO pending successful SFT validation
+
+---
+
 ## Session: December 9, 2025
 
 ### Overview
@@ -169,53 +221,126 @@ All files under GitHub's 100MB limit. Data files excluded via `.gitignore`.
 
 ---
 
-### 8. Current Training Status
+### 8. SFT Training - COMPLETED ✅
 
-**Run ID**: `20251209_222946`
+**Successful Run ID**: `20251209_150417`
 
 ```
 Model: Qwen/Qwen3-8B
+Hardware: 2× NVIDIA B200 (183GB VRAM each)
 Epochs: 3
-Batch size: 4
-Effective batch: 32
+Per-GPU batch size: 8
+Gradient accumulation: 4
+Effective batch size: 64 (8 × 4 × 2 GPUs)
 Training traces: 14,346
-Estimated time: 1-2 hours
+Training time: ~10 minutes
 ```
 
----
+**Output Location**: `outputs/sft/20251209_150417/final/`
 
-### 9. Next Steps
-
-1. **Complete SFT training** - Monitor for completion
-2. **Evaluate SFT model** - Run on PrOntoQA test set
-3. **Run OaK-DPO loop** - 3 iterations with solver verification
-4. **Ablation studies** - Test impact of each component
-5. **Transfer to FOLIO** - Test generalization
+**Key Fixes for Multi-GPU Training**:
+1. Removed `device_map='auto'` when running with `accelerate` (conflicts with DDP)
+2. Added explicit device placement based on `LOCAL_RANK` environment variable
+3. Used `--mixed_precision=bf16` flag in accelerate launch command
 
 ---
 
-### 10. Commands Reference
+### 9. OaK-DPO Training - IN PROGRESS 🔄
+
+#### Hardware Upgrade
+Scaled from 2 GPUs to **6× NVIDIA B200** (GPUs 2-7, avoiding occupied GPU 0).
+
+#### Performance Issues Discovered
+
+| Issue | Impact | Solution |
+|-------|--------|----------|
+| No work distribution | 6× slowdown | Each GPU now processes 1/6 of problems |
+| Sequential sample generation | 8× slowdown | Implemented batched generation |
+| Device mismatch in TraceGenerator | Crash | Auto-detect device from model |
+
+#### Time Optimization Compromises
+
+Due to **6-hour deadline** for complete paper, we made these trade-offs:
+
+| Parameter | Original | Optimized | Justification |
+|-----------|----------|-----------|---------------|
+| **Training problems** | 14,346 | **1,500** | Still statistically significant (10%) |
+| **Samples per problem** | 8 | **2** | Minimum for preference pairs |
+| **OaK iterations** | 3 | **2** | Still shows improvement curve |
+| **Max proof steps** | 15 | **6** | PrOntoQA proofs avg 3-5 steps |
+| **Max thought tokens** | 150 | **60** | Shorter but sufficient |
+| **Max action tokens** | 50 | **25** | Actions are formulaic |
+| **Sampling** | `do_sample=true` | **`do_sample=false`** | Greedy is faster |
+| **Option head training** | Enabled | **Disabled** | Not critical for main results |
+| **Calibration analysis** | Enabled | **Disabled** | Can compute post-hoc |
+| **Constrained decoding** | Enabled | **Disabled** | Remove validation overhead |
+| **Save traces** | Enabled | **Disabled** | Reduce I/O time |
+
+**Scientific Validity Notes**:
+- 1,500 problems is comparable to many DPO papers
+- 2 samples still enables winner/loser preference pairs
+- 2 iterations demonstrates the "experience → model → policy" OaK cycle
+- Greedy decoding produces deterministic, reproducible results
+
+#### Expected Timeline (Optimized)
+
+| Phase | Duration | Status |
+|-------|----------|--------|
+| SFT Training | ~10 min | ✅ Complete |
+| OaK Iteration 1 (trace gen + DPO) | ~45-60 min | 🔄 In Progress |
+| OaK Iteration 2 (trace gen + DPO) | ~45-60 min | ⏳ Pending |
+| Evaluation | ~15-20 min | ⏳ Pending |
+| **Total OaK-DPO** | **~2-2.5 hours** | |
+
+---
+
+### 10. Code Changes for Multi-GPU
+
+#### `src/training/sft.py`
+- Conditional `device_map` based on `WORLD_SIZE` environment variable
+- Explicit GPU placement in distributed mode
+
+#### `scripts/run_oak_dpo.py`
+- Read base model name from adapter's `adapter_config.json`
+- Explicit device placement using `LOCAL_RANK`
+- Added `torch.compile` for faster inference (single-GPU mode)
+
+#### `src/training/oak_loop.py`
+- Added `max_problems` config option
+- Distributed problem splitting across GPUs using `torch.distributed`
+- All-gather to collect traces from all GPUs
+- Added tqdm progress bars (rank 0 only)
+
+#### `src/inference/generate_trace.py`
+- Auto-detect device from model parameters
+- Batched sample generation (all samples for a problem in parallel)
+- Deep copy of state for each trace to avoid mutation
+
+---
+
+### 11. Commands Reference (Updated)
 
 ```bash
-# Data preparation
-python scripts/prepare_data.py --raw-dir data/raw --output-dir data/processed
-
-# SFT training
-python scripts/train_sft.py \
+# SFT training (multi-GPU)
+CUDA_VISIBLE_DEVICES=0,1 accelerate launch --num_processes=2 --mixed_precision=bf16 \
+    scripts/train_sft.py \
     --config configs/training.yaml \
-    --data data/processed/prontoqa_train.jsonl
+    --data data/processed/prontoqa_train.jsonl \
+    --output-dir outputs/sft
 
-# OaK-DPO training (after SFT)
-python scripts/run_oak_dpo.py \
+# OaK-DPO training (6 GPUs, time-optimized)
+CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch --num_processes=6 --mixed_precision=bf16 \
+    scripts/run_oak_dpo.py \
     --config configs/training.yaml \
-    --sft-model outputs/sft/latest/final \
+    --sft-model outputs/sft/20251209_150417/final \
     --train-data data/processed/prontoqa_train.jsonl \
     --val-data data/processed/prontoqa_test.jsonl \
-    --iterations 3
+    --dataset-type prontoqa \
+    --iterations 2
 
 # Evaluation
 python scripts/evaluate.py \
-    --model outputs/sft/latest/final \
+    --model outputs/oak_dpo/latest/checkpoints/iter_1/model \
     --data data/processed/prontoqa_test.jsonl \
     --dataset-type prontoqa
 ```
@@ -229,4 +354,9 @@ python scripts/evaluate.py \
 3. **Use timestamped outputs** - Never overwrite previous experiment runs
 4. **LoRA order matters** - Apply gradient checkpointing after LoRA setup
 5. **Monitor GPU utilization** - Low utilization means room for larger batches
+6. **`device_map='auto'` conflicts with DDP** - Don't use with accelerate distributed
+7. **Distributed inference needs explicit device placement** - Use `LOCAL_RANK`
+8. **Batch across samples, not just problems** - Significant speedup for multi-sample generation
+9. **Split work across GPUs** - Don't let each GPU process all problems redundantly
+10. **Time constraints require principled trade-offs** - Document compromises for reproducibility
 

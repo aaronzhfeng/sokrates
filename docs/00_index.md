@@ -19,6 +19,15 @@ A neuro-symbolic approach to logical reasoning that instantiates Sutton's Option
 | [07 - Implementation Guide](07_implementation_guide.md) | Complete code walkthrough with examples |
 | [08 - API Reference](08_api_reference.md) | Full API documentation for all modules |
 | [09 - Session Log](09_session_log.md) | Development progress, changes, and lessons learned |
+| [10 - Experimental Design](10_experimental_design.md) | Data splits, methodology, and rationale |
+| [11 - DPO Runtime Notes](11_dpo_runtime_notes.md) | Hotfixes for distributed DPO training |
+| [12 - Smoke Test](12_smoke_test.md) | Quick end-to-end validation commands |
+| [13 - Two-Stage Pipeline](13_two_stage_pipeline.md) | Decoupled trace generation + DPO training |
+| [14 - Debugging Session](14_debugging_session_dec10.md) | Critical bug fixes (Dec 10, 2025) |
+| [15 - Optimization Plan](15_optimization_plan.md) | Performance optimization implementation roadmap |
+| [16 - Prompt Evolution](16_prompt_evolution.md) | Trace generation prompt design history |
+| [17 - vLLM Inference Config](17_vllm_inference_config.md) | vLLM configuration testing & best practices |
+| [18 - Hyperparameter Search](18_hyperparameter_search.md) | **NEW:** Temperature, max_steps, samples testing data |
 
 ---
 

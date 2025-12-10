@@ -543,6 +543,11 @@ summary = run_oak_pipeline(
 5. **DPO Update**: Improve policy
 6. **Repeat**
 
+**Distributed OaK-DPO notes (Dec 2025):**
+- Trace generation now initializes torch.distributed (if WORLD_SIZE>1) so all ranks gather traces before preference building, avoiding mismatched per-rank datasets when DPO starts.
+- Preference pairs strip the prompt prefix only once (instead of blanket string replace) to prevent accidental removal when the prompt text appears inside the generated reasoning.
+- DPO iteration keeps the base `DPOConfig` immutable across iterations; per-iteration checkpoints write to `.../iter_{k}` without nesting.
+
 ---
 
 ## 7. Inference
