@@ -43,8 +43,24 @@ def load_config(config_path: str) -> dict:
     return config
 
 
-def load_training_data(data_path: str) -> list[OptionizedTrace]:
-    """Load optionized training data."""
+class TrainingTextWrapper:
+    """Wrapper that holds pre-formatted training text."""
+    def __init__(self, problem_id: str, training_text: str, label: str):
+        self.problem_id = problem_id
+        self._training_text = training_text
+        self.final_answer = label
+    
+    def to_training_string(self) -> str:
+        """Return the pre-formatted training text."""
+        return self._training_text
+
+
+def load_training_data(data_path: str) -> list:
+    """Load optionized training data.
+    
+    Returns list of objects with to_training_string() method.
+    Uses pre-formatted training_text if available (recommended).
+    """
     traces = []
     
     data_file = Path(data_path)
@@ -55,43 +71,49 @@ def load_training_data(data_path: str) -> list[OptionizedTrace]:
         for line in f:
             item = json.loads(line.strip())
             
-            # Reconstruct trace from saved data
-            # In practice, would have full trace serialization
-            initial_state = LogicalState(
-                problem_id=item["problem_id"],
-                nl_premises=item.get("premises", []),
-                fol_formulas=[],
-                target_conclusion=item.get("conclusion", ""),
-                label=item.get("label", "UNKNOWN"),
-            )
-            
-            # Parse steps if available, otherwise create minimal trace
-            steps = []
-            if "steps" in item:
-                for i, step_data in enumerate(item["steps"]):
-                    step = ProofStep(
-                        step_idx=i,
-                        thought=step_data.get("thought", ""),
-                        option_type=OptionType[step_data.get("option_type", "MODUS_PONENS")],
-                        option_args=step_data.get("args", [0, 1]),
-                    )
-                    steps.append(step)
+            # Use pre-formatted training_text if available (preferred)
+            if "training_text" in item:
+                trace = TrainingTextWrapper(
+                    problem_id=item["problem_id"],
+                    training_text=item["training_text"],
+                    label=item.get("label", "UNKNOWN"),
+                )
+                traces.append(trace)
             else:
-                # Create a minimal conclude step
-                steps = [ProofStep(
-                    step_idx=0,
-                    thought=f"Based on the premises, the conclusion is {item.get('label', 'UNKNOWN')}.",
-                    option_type=OptionType.CONCLUDE,
-                    option_args=[{"TRUE": 0, "FALSE": 1, "UNKNOWN": 2}.get(item.get("label", "UNKNOWN"), 2)],
-                )]
-            
-            trace = OptionizedTrace(
-                problem_id=item["problem_id"],
-                initial_state=initial_state,
-                steps=steps,
-                final_answer=item.get("label", "UNKNOWN"),
-            )
-            traces.append(trace)
+                # Fallback: reconstruct from steps (legacy format)
+                initial_state = LogicalState(
+                    problem_id=item["problem_id"],
+                    nl_premises=item.get("premises", []),
+                    fol_formulas=[],
+                    target_conclusion=item.get("conclusion", ""),
+                    label=item.get("label", "UNKNOWN"),
+                )
+                
+                steps = []
+                if "steps" in item:
+                    for i, step_data in enumerate(item["steps"]):
+                        step = ProofStep(
+                            step_idx=i,
+                            thought=step_data.get("thought", ""),
+                            option_type=OptionType[step_data.get("option_type", "MODUS_PONENS")],
+                            option_args=step_data.get("args", [0, 1]),
+                        )
+                        steps.append(step)
+                else:
+                    steps = [ProofStep(
+                        step_idx=0,
+                        thought=f"Based on the premises, the conclusion is {item.get('label', 'UNKNOWN')}.",
+                        option_type=OptionType.CONCLUDE,
+                        option_args=[{"TRUE": 0, "FALSE": 1, "UNKNOWN": 2}.get(item.get("label", "UNKNOWN"), 2)],
+                    )]
+                
+                trace = OptionizedTrace(
+                    problem_id=item["problem_id"],
+                    initial_state=initial_state,
+                    steps=steps,
+                    final_answer=item.get("label", "UNKNOWN"),
+                )
+                traces.append(trace)
     
     return traces
 

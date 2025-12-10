@@ -263,12 +263,27 @@ def create_optionized_data(raw_dir: str, output_dir: str) -> None:
             
             optionized = []
             for ex in tqdm(examples, desc=f"Optionizing FOLIO {split_name}"):
+                # FOLIO premises can be a newline-separated string or list
+                raw_premises = ex.get("premises", [])
+                if isinstance(raw_premises, str):
+                    premises_list = [p.strip() for p in raw_premises.split("\n") if p.strip()]
+                else:
+                    premises_list = raw_premises
+                
+                # Same for FOL premises (usually empty in FOLIO)
+                raw_premises_fol = ex.get("premises_fol", [])
+                if isinstance(raw_premises_fol, str):
+                    premises_fol_list = [p.strip() for p in raw_premises_fol.split("\n") if p.strip()]
+                else:
+                    premises_fol_list = raw_premises_fol if raw_premises_fol else []
+                
+                # Pad FOL premises if shorter than NL premises
+                while len(premises_fol_list) < len(premises_list):
+                    premises_fol_list.append("")
+                
                 # Create LogicalState
                 formulas = []
-                for i, (nl, fol) in enumerate(zip(
-                    ex.get("premises", []),
-                    ex.get("premises_fol", [])
-                )):
+                for i, (nl, fol) in enumerate(zip(premises_list, premises_fol_list)):
                     formulas.append(FOLFormula(
                         id=i,
                         nl_text=nl,
@@ -278,7 +293,7 @@ def create_optionized_data(raw_dir: str, output_dir: str) -> None:
                 
                 state = LogicalState(
                     problem_id=ex["id"],
-                    nl_premises=ex.get("premises", []),
+                    nl_premises=premises_list,
                     fol_formulas=formulas,
                     target_conclusion=ex.get("conclusion", ""),
                     label=ex.get("label", "UNKNOWN").upper(),
@@ -288,8 +303,8 @@ def create_optionized_data(raw_dir: str, output_dir: str) -> None:
                     "problem_id": state.problem_id,
                     "prompt": state.to_prompt(),
                     "label": state.label,
-                    "premises": ex.get("premises", []),
-                    "premises_fol": ex.get("premises_fol", []),
+                    "premises": premises_list,  # Now a proper list
+                    "premises_fol": premises_fol_list,
                     "conclusion": ex.get("conclusion", ""),
                     "conclusion_fol": ex.get("conclusion_fol", ""),
                 })
@@ -322,11 +337,17 @@ def create_optionized_data(raw_dir: str, output_dir: str) -> None:
                     label=ex["answer"],
                 )
                 
+                # Parse context into premises for structured output
+                premises = [s.strip() for s in ex["context"].split(".") if s.strip()]
+                
                 optionized.append({
                     "problem_id": trace.problem_id,
                     "training_text": trace.to_training_string(),
                     "label": trace.final_answer,
                     "num_steps": trace.num_steps,
+                    # Structured fields for trace generation
+                    "premises": premises,
+                    "conclusion": ex["query"],
                 })
             
             output_file = output_path / f"prontoqa_{split_name}.jsonl"

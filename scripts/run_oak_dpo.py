@@ -38,27 +38,65 @@ def load_model_and_tokenizer(model_path: str, config: dict):
     from peft import PeftModel
     
     model_config = config.get("model", {})
+    adapter_path = Path(model_path)
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # Use left padding for batched generation with decoder-only models
+    tokenizer.padding_side = 'left'
     
-    # Load base model
-    base_model_name = model_config.get("name", "meta-llama/Llama-3.1-8B-Instruct")
+    # Determine base model name - read from adapter config if available
+    base_model_name = None
+    if adapter_path.exists() and (adapter_path / "adapter_config.json").exists():
+        with open(adapter_path / "adapter_config.json") as f:
+            adapter_config = json.load(f)
+        base_model_name = adapter_config.get("base_model_name_or_path")
+        print(f"Found base model in adapter config: {base_model_name}")
+    
+    # Fallback to config or default
+    if not base_model_name:
+        base_model_name = model_config.get("name", "meta-llama/Llama-3.1-8B-Instruct")
+    
+    # Check if running in distributed mode (accelerate sets these env vars)
+    is_distributed = (
+        os.environ.get("WORLD_SIZE") is not None and 
+        int(os.environ.get("WORLD_SIZE", "1")) > 1
+    )
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     
     print(f"Loading base model: {base_model_name}")
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model_name,
-        torch_dtype=torch.bfloat16 if model_config.get("torch_dtype") == "bfloat16" else torch.float32,
-        device_map="auto",
-    )
+    print(f"Distributed mode: {is_distributed}, Local rank: {local_rank}")
+    
+    # Don't use device_map="auto" in distributed mode - we handle device placement explicitly
+    if is_distributed:
+        # Load model and move to the correct GPU based on local rank
+        device = f"cuda:{local_rank}"
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_name,
+            torch_dtype=torch.bfloat16,
+        )
+        model = model.to(device)
+        print(f"Model moved to {device}")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model_name,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
     
     # Load LoRA adapter if it exists
-    adapter_path = Path(model_path)
     if adapter_path.exists() and (adapter_path / "adapter_config.json").exists():
         print(f"Loading LoRA adapter from: {model_path}")
         model = PeftModel.from_pretrained(model, model_path)
+        if is_distributed:
+            # Ensure adapter is also on the correct device
+            model = model.to(device)
+    
+    # Note: torch.compile is disabled because it breaks DPO training
+    # (dynamic shapes cause AssertionError in symbolic_shapes.py)
+    model.eval()
     
     return model, tokenizer
 
@@ -194,6 +232,8 @@ def main():
     oak_config = OaKLoopConfig(
         num_iterations=args.iterations or oak_config_dict.get("num_iterations", 3),
         samples_per_problem=args.samples or oak_config_dict.get("samples_per_problem", 8),
+        max_problems=oak_config_dict.get("max_problems", 0),  # 0 = use all
+        max_val_problems=oak_config_dict.get("max_val_problems", 200),  # Validation limit
         output_dir=str(exp.exp_dir),
         checkpoint_dir=str(exp.exp_dir / "checkpoints"),
         dpo_config=dpo_config,
@@ -201,7 +241,7 @@ def main():
         option_head_lr=oak_config_dict.get("option_head_lr", 1e-4),
         option_head_epochs=oak_config_dict.get("option_head_epochs", 3),
         log_calibration=oak_config_dict.get("log_calibration", True),
-        save_traces=oak_config_dict.get("save_traces", True),
+        save_traces=oak_config_dict.get("save_traces", False),  # Disabled for speed
     )
     
     # Log experiment config

@@ -3,12 +3,35 @@
 Evaluate a trained SOKRATES model.
 
 Computes accuracy, step validity, trace validity, and calibration metrics.
+
+Usage:
+    # Evaluate SFT model
+    python scripts/evaluate.py \
+        --model outputs/sft/latest/final \
+        --data data/processed/prontoqa_test.jsonl \
+        --dataset-type prontoqa \
+        --output-dir outputs/evaluation/sft
+
+    # Evaluate DPO model
+    python scripts/evaluate.py \
+        --model outputs/oak_dpo/latest/checkpoints/iter_1/model \
+        --data data/processed/prontoqa_test.jsonl \
+        --dataset-type prontoqa \
+        --output-dir outputs/evaluation/dpo_iter1
+        
+    # Quick evaluation (subset)
+    python scripts/evaluate.py \
+        --model outputs/sft/latest/final \
+        --data data/processed/prontoqa_test.jsonl \
+        --max-samples 100 \
+        --dataset-name quick_test
 """
 
 import argparse
 import json
 import os
 from pathlib import Path
+from datetime import datetime
 
 import yaml
 import torch
@@ -32,17 +55,39 @@ def load_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def load_model_and_tokenizer(model_path: str):
-    """Load model and tokenizer for evaluation."""
+def load_model_and_tokenizer(model_path: str, merge_adapter: bool = False):
+    """
+    Load model and tokenizer for evaluation.
+    
+    Args:
+        model_path: Path to model checkpoint (PEFT adapter or full model)
+        merge_adapter: If True, merge LoRA adapter into base model for faster inference
+        
+    Returns:
+        model, tokenizer tuple
+    """
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from peft import PeftModel
     
     # Check if this is a PEFT model
     model_path = Path(model_path)
     
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    # Try to load tokenizer from model path first, then from base model
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+    except Exception as e:
+        print(f"Could not load tokenizer from {model_path}, trying base model...")
+        if (model_path / "adapter_config.json").exists():
+            with open(model_path / "adapter_config.json") as f:
+                adapter_config = json.load(f)
+            base_model_name = adapter_config.get("base_model_name_or_path")
+            tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+        else:
+            raise e
+    
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = 'left'  # Required for decoder-only batched generation
     
     # Try to load as PEFT model first
     if (model_path / "adapter_config.json").exists():
@@ -56,10 +101,16 @@ def load_model_and_tokenizer(model_path: str):
             base_model_name,
             torch_dtype=torch.bfloat16,
             device_map="auto",
+            trust_remote_code=True,
         )
         
         print(f"Loading adapter from: {model_path}")
         model = PeftModel.from_pretrained(base_model, model_path)
+        
+        # Optionally merge adapter for faster inference
+        if merge_adapter:
+            print("Merging adapter into base model...")
+            model = model.merge_and_unload()
     else:
         # Load as regular model
         print(f"Loading model from: {model_path}")
@@ -67,6 +118,7 @@ def load_model_and_tokenizer(model_path: str):
             model_path,
             torch_dtype=torch.bfloat16,
             device_map="auto",
+            trust_remote_code=True,
         )
     
     model.eval()
@@ -157,30 +209,89 @@ def evaluate_model(
     }
 
 
-def save_results(results: dict, output_dir: str, dataset_name: str):
-    """Save evaluation results."""
+def save_results(results: dict, output_dir: str, dataset_name: str, save_traces: bool = False):
+    """
+    Save evaluation results.
+    
+    Args:
+        results: Dict with metrics, traces, and calibration_data
+        output_dir: Directory to save results
+        dataset_name: Name prefix for output files
+        save_traces: Whether to save individual trace predictions (can be large)
+    """
     os.makedirs(output_dir, exist_ok=True)
     
-    # Save metrics
+    # Save metrics as JSON
     metrics_path = os.path.join(output_dir, f"{dataset_name}_metrics.json")
     with open(metrics_path, "w") as f:
         # Convert non-serializable items
         metrics_copy = results["metrics"].copy()
-        if "q_phi_calibration_curve" in metrics_copy:
-            # Already serializable
-            pass
         json.dump(metrics_copy, f, indent=2, default=str)
     
     # Save human-readable report
     report_path = os.path.join(output_dir, f"{dataset_name}_report.txt")
     with open(report_path, "w") as f:
         f.write(format_metrics_report(results["metrics"]))
+        f.write(f"\n\nGenerated: {datetime.now().isoformat()}\n")
+    
+    # Save trace predictions if requested
+    if save_traces and "traces" in results:
+        traces_path = os.path.join(output_dir, f"{dataset_name}_traces.jsonl")
+        with open(traces_path, "w") as f:
+            for trace in results["traces"]:
+                trace_dict = {
+                    "problem_id": trace.problem_id,
+                    "final_answer": trace.final_answer,
+                    "num_steps": len(trace.steps),
+                    "steps": [
+                        {
+                            "option_type": step.option_type.name if step.option_type else None,
+                            "option_args": step.option_args,
+                            "solver_valid": step.solver_valid,
+                        }
+                        for step in trace.steps
+                    ],
+                }
+                f.write(json.dumps(trace_dict) + "\n")
+        print(f"Saved {len(results['traces'])} traces to {traces_path}")
+    
+    # Save calibration data if available
+    if results.get("calibration_data"):
+        cal_path = os.path.join(output_dir, f"{dataset_name}_calibration.json")
+        with open(cal_path, "w") as f:
+            json.dump({
+                "predictions": [p for p, _ in results["calibration_data"]],
+                "labels": [l for _, l in results["calibration_data"]],
+            }, f)
     
     print(f"Results saved to {output_dir}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate SOKRATES model")
+    parser = argparse.ArgumentParser(
+        description="Evaluate SOKRATES model",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Evaluate SFT model on test set
+  python scripts/evaluate.py \\
+      --model outputs/sft/latest/final \\
+      --data data/processed/prontoqa_test.jsonl
+
+  # Quick evaluation with subset
+  python scripts/evaluate.py \\
+      --model outputs/sft/latest/final \\
+      --data data/processed/prontoqa_test.jsonl \\
+      --max-samples 100 \\
+      --dataset-name quick_test
+
+  # Evaluate with merged adapter (faster inference)
+  python scripts/evaluate.py \\
+      --model outputs/oak_dpo/latest/checkpoints/iter_1/model \\
+      --data data/processed/prontoqa_test.jsonl \\
+      --merge-adapter
+        """
+    )
     parser.add_argument(
         "--model",
         type=str,
@@ -224,6 +335,28 @@ def main():
         default="test",
         help="Name for output files",
     )
+    parser.add_argument(
+        "--merge-adapter",
+        action="store_true",
+        help="Merge LoRA adapter for faster inference",
+    )
+    parser.add_argument(
+        "--save-traces",
+        action="store_true",
+        help="Save individual trace predictions",
+    )
+    parser.add_argument(
+        "--greedy",
+        action="store_true",
+        default=True,
+        help="Use greedy decoding (default: True)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (0 = greedy)",
+    )
     args = parser.parse_args()
     
     # Load config
@@ -231,12 +364,29 @@ def main():
     if Path(args.config).exists():
         config = load_config(args.config)
     
+    # Override config with CLI args
+    if "evaluation" not in config:
+        config["evaluation"] = {}
+    if args.greedy or args.temperature == 0:
+        config["evaluation"]["greedy"] = True
+        config["evaluation"]["temperature"] = 0.0
+    else:
+        config["evaluation"]["greedy"] = False
+        config["evaluation"]["temperature"] = args.temperature
+    
     # Load model
-    print(f"Loading model from {args.model}")
-    model, tokenizer = load_model_and_tokenizer(args.model)
+    print(f"\n{'='*60}")
+    print(f"SOKRATES Evaluation")
+    print(f"{'='*60}")
+    print(f"Model: {args.model}")
+    print(f"Data: {args.data}")
+    print(f"Max samples: {args.max_samples or 'all'}")
+    print(f"{'='*60}\n")
+    
+    model, tokenizer = load_model_and_tokenizer(args.model, merge_adapter=args.merge_adapter)
     
     # Load test data
-    print(f"Loading test data from {args.data}")
+    print(f"\nLoading test data from {args.data}")
     problems = load_problems(args.data, args.max_samples)
     print(f"Loaded {len(problems)} test problems")
     
@@ -249,14 +399,17 @@ def main():
     
     # Run evaluation
     print("\nRunning evaluation...")
+    start_time = datetime.now()
     results = evaluate_model(model, tokenizer, problems, solver, config)
+    elapsed = (datetime.now() - start_time).total_seconds()
     
     # Print results
     print("\n" + "=" * 60)
     print(format_metrics_report(results["metrics"]))
+    print(f"\nEvaluation completed in {elapsed:.1f}s ({len(problems)/elapsed:.2f} problems/sec)")
     
     # Save results
-    save_results(results, args.output_dir, args.dataset_name)
+    save_results(results, args.output_dir, args.dataset_name, save_traces=args.save_traces)
 
 
 if __name__ == "__main__":
