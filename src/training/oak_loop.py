@@ -13,11 +13,13 @@ This is the core "micro-OaK" cycle described in the paper.
 """
 
 import os
+import sys
 import json
 from dataclasses import dataclass, field
 from typing import Optional
 import torch
 from datetime import datetime
+from tqdm import tqdm
 
 from src.data.structures import LogicalState, OptionizedTrace
 from src.models.option_head import OptionSuccessHead
@@ -32,6 +34,8 @@ class OaKLoopConfig:
     # Loop parameters
     num_iterations: int = 3
     samples_per_problem: int = 8
+    max_problems: int = 0  # 0 = use all problems, >0 = limit to this many
+    max_val_problems: int = 200  # Max validation problems for eval (0 = all)
     
     # Paths
     output_dir: str = "outputs/oak_loop"
@@ -119,7 +123,14 @@ class OaKLoop:
         Returns:
             Dict with training history and final metrics
         """
+        import random
         from src.inference.generate_trace import TraceGenerator, GenerationConfig
+        
+        # Apply max_problems limit if set
+        if self.config.max_problems > 0 and len(train_problems) > self.config.max_problems:
+            random.seed(42)  # Reproducible subset
+            train_problems = random.sample(train_problems, self.config.max_problems)
+            print(f"[TIME OPT] Using subset of {self.config.max_problems} problems")
         
         print("=" * 60)
         print("Starting SOKRATES OaK Training Loop")
@@ -183,21 +194,86 @@ class OaKLoop:
         generator,
         problems: list[LogicalState],
     ) -> dict[str, list[OptionizedTrace]]:
-        """Generate traces for all problems."""
-        all_traces = {}
+        """Generate traces for all problems, distributed across GPUs."""
+        import torch.distributed as dist
         
-        for i, problem in enumerate(problems):
-            if (i + 1) % 100 == 0:
-                print(f"  Generated for {i + 1}/{len(problems)} problems")
-            
+        # Get distributed training info
+        rank = int(os.environ.get("LOCAL_RANK", "0"))
+        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+
+        # If launched with torchrun/accelerate but dist isn't initialized yet,
+        # initialize so we can all-gather traces before DPO starts.
+        if (
+            world_size > 1
+            and dist.is_available()
+            and not dist.is_initialized()
+        ):
+            dist.init_process_group(backend="nccl", init_method="env://")
+
+        if dist.is_initialized():
+            rank = dist.get_rank()
+            world_size = dist.get_world_size()
+        
+        # Split problems across GPUs - each GPU handles a subset
+        problems_per_gpu = len(problems) // world_size
+        start_idx = rank * problems_per_gpu
+        end_idx = start_idx + problems_per_gpu if rank < world_size - 1 else len(problems)
+        local_problems = problems[start_idx:end_idx]
+        
+        if rank == 0:
+            print(f"  Distributing {len(problems)} problems across {world_size} GPUs")
+            print(f"  Each GPU handles ~{problems_per_gpu} problems")
+        
+        # Generate traces for this GPU's subset
+        local_traces = {}
+        disable_tqdm = rank != 0
+        
+        for problem in tqdm(
+            local_problems,
+            desc=f"  Generating traces",
+            disable=disable_tqdm,
+            position=0,
+            leave=True,
+            ncols=80,
+            file=sys.stdout,
+        ):
             traces = generator.generate_trace(
                 problem,
                 num_samples=self.config.samples_per_problem,
             )
-            all_traces[problem.problem_id] = traces
+            local_traces[problem.problem_id] = traces
+        
+        # Gather traces from all GPUs (only if distributed)
+        if world_size > 1 and dist.is_initialized():
+            # Serialize local traces
+            import pickle
+            local_data = pickle.dumps(local_traces)
+            
+            # Gather sizes first
+            local_size = torch.tensor([len(local_data)], dtype=torch.long, device=f"cuda:{rank}")
+            all_sizes = [torch.zeros(1, dtype=torch.long, device=f"cuda:{rank}") for _ in range(world_size)]
+            dist.all_gather(all_sizes, local_size)
+            
+            # Gather all data
+            max_size = max(s.item() for s in all_sizes)
+            local_tensor = torch.zeros(max_size, dtype=torch.uint8, device=f"cuda:{rank}")
+            local_tensor[:len(local_data)] = torch.frombuffer(local_data, dtype=torch.uint8).to(f"cuda:{rank}")
+            
+            all_tensors = [torch.zeros(max_size, dtype=torch.uint8, device=f"cuda:{rank}") for _ in range(world_size)]
+            dist.all_gather(all_tensors, local_tensor)
+            
+            # Combine all traces
+            all_traces = {}
+            for i, (tensor, size) in enumerate(zip(all_tensors, all_sizes)):
+                data = tensor[:size.item()].cpu().numpy().tobytes()
+                traces_dict = pickle.loads(data)
+                all_traces.update(traces_dict)
+        else:
+            all_traces = local_traces
         
         total_traces = sum(len(t) for t in all_traces.values())
-        print(f"  Generated {total_traces} total traces")
+        if rank == 0:
+            print(f"  Generated {total_traces} total traces")
         
         return all_traces
     
@@ -208,7 +284,17 @@ class OaKLoop:
         valid_traces = 0
         total_traces = 0
         
-        for traces in all_traces.values():
+        # Only show progress bar on rank 0
+        rank = int(os.environ.get("LOCAL_RANK", "0"))
+        disable_tqdm = rank != 0
+        
+        all_trace_lists = list(all_traces.values())
+        for traces in tqdm(
+            all_trace_lists,
+            desc="  Verifying traces",
+            disable=disable_tqdm,
+            dynamic_ncols=True,
+        ):
             for trace in traces:
                 total_traces += 1
                 
@@ -272,8 +358,14 @@ class OaKLoop:
         """Run DPO training iteration."""
         from src.training.dpo import build_preference_pairs, train_dpo
         
-        # Build preference pairs
-        pairs = build_preference_pairs(problems, all_traces)
+        # Build preference pairs - first try strict (require valid winner)
+        pairs = build_preference_pairs(problems, all_traces, require_valid_winner=True)
+        
+        # If too few pairs, use fallback (compare by step validity rate)
+        if len(pairs) < 100:
+            print(f"  Only {len(pairs)} strict pairs, using fallback comparison...")
+            pairs = build_preference_pairs(problems, all_traces, require_valid_winner=False)
+        
         print(f"  Created {len(pairs)} preference pairs")
         
         if not pairs:
@@ -301,14 +393,27 @@ class OaKLoop:
         generator,
         problems: list[LogicalState],
     ) -> dict:
-        """Evaluate current model on problems."""
+        """Evaluate current model on problems (only on rank 0 for efficiency)."""
         from src.evaluation.metrics import compute_all_metrics
+        
+        rank = int(os.environ.get("LOCAL_RANK", "0"))
+        
+        # Only run evaluation on rank 0 to avoid redundant computation
+        if rank != 0:
+            return {"accuracy": 0.0, "trace_validity": 0.0}
+        
+        # Limit validation to subset for speed (full eval can be done post-training)
+        max_eval = self.config.max_val_problems if self.config.max_val_problems > 0 else len(problems)
+        max_eval_problems = min(len(problems), max_eval)
+        eval_problems = problems[:max_eval_problems]
+        
+        print(f"  Evaluating on {max_eval_problems} validation problems...")
         
         # Generate one trace per problem (greedy)
         traces = []
         labels = []
         
-        for problem in problems:
+        for problem in tqdm(eval_problems, desc="  Evaluating", disable=False):
             trace = generator.generate_trace(problem, num_samples=1)[0]
             self.solver.verify_trace(trace, problem.label)
             traces.append(trace)

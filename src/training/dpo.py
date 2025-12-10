@@ -6,7 +6,7 @@ over optionized traces.
 """
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 import torch
 from torch.utils.data import Dataset
@@ -200,12 +200,13 @@ def train_dpo(
     )
     
     # Create DPO trainer
+    # Note: TRL 0.25+ uses 'processing_class' instead of 'tokenizer'
     trainer = DPOTrainer(
         model=model,
         ref_model=ref_model,
         args=dpo_config,
         train_dataset=hf_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
     
     # Train
@@ -247,7 +248,11 @@ def run_dpo_iteration(
     
     if config is None:
         config = DPOConfig()
-    config.output_dir = f"{config.output_dir}/iter_{iteration}"
+    # Avoid mutating the shared config across iterations
+    iteration_config = replace(
+        config,
+        output_dir=f"{config.output_dir}/iter_{iteration}",
+    )
     
     print(f"DPO Iteration {iteration}")
     print("=" * 50)
@@ -273,7 +278,7 @@ def run_dpo_iteration(
     
     # 3. Run DPO training
     print("Running DPO training...")
-    trainer = train_dpo(model, tokenizer, pairs, config)
+    trainer = train_dpo(model, tokenizer, pairs, iteration_config)
     
     # Collect stats
     stats = {

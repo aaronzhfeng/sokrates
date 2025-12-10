@@ -269,10 +269,24 @@ class PreferencePair:
 
     def to_dpo_format(self) -> dict:
         """Convert to format expected by TRL's DPOTrainer."""
+        winner_str = self.winner.to_training_string()
+        loser_str = self.loser.to_training_string()
+
+        # Remove the prompt prefix exactly once to avoid clobbering repeated text
+        if winner_str.startswith(self.prompt):
+            chosen = winner_str[len(self.prompt):].lstrip("\n")
+        else:
+            chosen = winner_str
+
+        if loser_str.startswith(self.prompt):
+            rejected = loser_str[len(self.prompt):].lstrip("\n")
+        else:
+            rejected = loser_str
+
         return {
             "prompt": self.prompt,
-            "chosen": self.winner.to_training_string().replace(self.prompt, "").strip(),
-            "rejected": self.loser.to_training_string().replace(self.prompt, "").strip(),
+            "chosen": chosen,
+            "rejected": rejected,
         }
 
 

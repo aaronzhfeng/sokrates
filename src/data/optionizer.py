@@ -185,7 +185,7 @@ class Optionizer:
             problem_id: Unique identifier
             context: The ontology context (facts and rules)
             query: The question to answer
-            chain: List of reasoning steps
+            chain: List of reasoning steps (predicate format like "Nervous('Wren', True)")
             label: True/False answer
 
         Returns:
@@ -214,18 +214,29 @@ class Optionizer:
             label="TRUE" if label else "FALSE",
         )
 
-        # Convert chain to proof steps
-        # PrOntoQA chains are typically simple modus ponens steps
+        # Convert chain to proof steps with proper reasoning
         optionized_steps = []
         next_formula_id = len(formulas)
+        
+        # Track derived facts for premise matching
+        derived_facts = []  # List of (entity, property, value) tuples
 
         for step_idx, step_text in enumerate(chain):
-            # Heuristically determine the option type
-            option_type, option_args = self._infer_option_from_text(step_text, formulas)
+            # Parse the predicate format: Property('Entity', True/False)
+            entity, prop, value = self._parse_predicate(step_text)
+            
+            # Find relevant premises for this derivation
+            option_type, option_args, thought = self._build_step_with_reasoning(
+                entity, prop, value, premises, formulas, derived_facts, step_idx
+            )
+            
+            # Track this derived fact
+            if entity and prop:
+                derived_facts.append((entity, prop, value))
 
             result_formula = FOLFormula(
                 id=next_formula_id,
-                nl_text=step_text,
+                nl_text=self._predicate_to_natural(entity, prop, value),
                 fol_string="",
                 source="derived",
                 derived_by=option_type.name,
@@ -235,18 +246,19 @@ class Optionizer:
 
             proof_step = ProofStep(
                 step_idx=step_idx,
-                thought=step_text,
+                thought=thought,
                 option_type=option_type,
                 option_args=option_args,
                 result_formula=result_formula,
             )
             optionized_steps.append(proof_step)
 
-        # Add terminal step
+        # Add terminal step with natural language
         final_label = "TRUE" if label else "FALSE"
+        conclude_thought = f"Based on the reasoning above, the conclusion '{query}' is {final_label}."
         conclude_step = ProofStep(
             step_idx=len(optionized_steps),
-            thought=f"Therefore, {query} is {final_label}.",
+            thought=conclude_thought,
             option_type=OptionType.CONCLUDE,
             option_args=[0 if label else 1],
         )
@@ -258,6 +270,100 @@ class Optionizer:
             steps=optionized_steps,
             final_answer=final_label,
         )
+    
+    def _parse_predicate(self, pred_str: str) -> tuple[str, str, bool]:
+        """
+        Parse predicate format like "Nervous('Wren', True)" into (entity, property, value).
+        """
+        import re
+        # Match: Property('Entity', True/False)
+        match = re.match(r"(\w+)\s*\(\s*['\"]?(\w+)['\"]?\s*,\s*(True|False)\s*\)", pred_str.strip())
+        if match:
+            prop = match.group(1)
+            entity = match.group(2)
+            value = match.group(3) == "True"
+            return entity, prop, value
+        return "", "", True
+    
+    def _predicate_to_natural(self, entity: str, prop: str, value: bool) -> str:
+        """Convert predicate to natural language."""
+        if not entity or not prop:
+            return ""
+        prop_lower = prop.lower()
+        if value:
+            return f"{entity} is {prop_lower}"
+        else:
+            return f"{entity} is not {prop_lower}"
+    
+    def _build_step_with_reasoning(
+        self,
+        entity: str,
+        prop: str,
+        value: bool,
+        premises: list[str],
+        formulas: list[FOLFormula],
+        derived_facts: list[tuple],
+        step_idx: int,
+    ) -> tuple[OptionType, list[int], str]:
+        """
+        Build a reasoning step with proper premise indices and natural language thought.
+        
+        Returns: (option_type, option_args, thought)
+        """
+        entity_lower = entity.lower() if entity else ""
+        prop_lower = prop.lower() if prop else ""
+        
+        # Find premises that mention this entity or property
+        entity_premise_idx = -1
+        rule_premise_idx = -1
+        
+        for i, premise in enumerate(premises):
+            premise_lower = premise.lower()
+            # Check if premise mentions the entity directly
+            if entity_lower and entity_lower in premise_lower:
+                if "is a" in premise_lower or "is " in premise_lower:
+                    entity_premise_idx = i
+            # Check if premise is a rule about this property
+            if prop_lower in premise_lower:
+                if "every" in premise_lower or "each" in premise_lower or "all" in premise_lower:
+                    rule_premise_idx = i
+        
+        # Also check derived formulas
+        for i, formula in enumerate(formulas):
+            if i >= len(premises):  # This is a derived formula
+                formula_lower = formula.nl_text.lower()
+                if entity_lower and entity_lower in formula_lower:
+                    entity_premise_idx = i
+        
+        # Determine option type and build thought
+        if rule_premise_idx >= 0 and entity_premise_idx >= 0:
+            # We have both a rule and a fact - use MODUS_PONENS
+            rule_text = premises[rule_premise_idx] if rule_premise_idx < len(premises) else formulas[rule_premise_idx].nl_text
+            entity_text = premises[entity_premise_idx] if entity_premise_idx < len(premises) else formulas[entity_premise_idx].nl_text
+            
+            if value:
+                thought = f"Since {entity_text.lower()} (premise {entity_premise_idx}) and {rule_text.lower()} (premise {rule_premise_idx}), we can conclude that {entity} is {prop_lower}."
+            else:
+                thought = f"Since {entity_text.lower()} (premise {entity_premise_idx}) and {rule_text.lower()} (premise {rule_premise_idx}), we can conclude that {entity} is not {prop_lower}."
+            
+            return OptionType.MODUS_PONENS, [entity_premise_idx, rule_premise_idx], thought
+        
+        elif rule_premise_idx >= 0:
+            # Only have a rule - use UNIV_INSTANTIATION
+            rule_text = premises[rule_premise_idx] if rule_premise_idx < len(premises) else ""
+            thought = f"Applying the rule '{rule_text}' to {entity}, we derive that {entity} is {prop_lower}."
+            return OptionType.UNIV_INSTANTIATION, [rule_premise_idx, step_idx], thought
+        
+        else:
+            # Fallback - try to find any relevant premise
+            best_idx = 0
+            for i, premise in enumerate(premises):
+                if entity_lower in premise.lower() or prop_lower in premise.lower():
+                    best_idx = i
+                    break
+            
+            thought = f"From premise {best_idx}, we can derive that {entity} is {prop_lower}." if value else f"From premise {best_idx}, we can derive that {entity} is not {prop_lower}."
+            return OptionType.MODUS_PONENS, [best_idx, min(best_idx + 1, len(premises) - 1)], thought
 
     def _map_rule_to_option(self, rule_name: str) -> Optional[OptionType]:
         """Map a P-FOLIO rule name to an OptionType."""

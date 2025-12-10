@@ -47,7 +47,7 @@ class TraceGenerator:
         tokenizer,
         config: Optional[GenerationConfig] = None,
         constrainer: Optional[OptionConstrainer] = None,
-        device: str = "cuda",
+        device: Optional[str] = None,
     ):
         """
         Initialize the trace generator.
@@ -57,13 +57,22 @@ class TraceGenerator:
             tokenizer: The tokenizer
             config: Generation configuration
             constrainer: Option constrainer for validation
-            device: Device to run inference on
+            device: Device to run inference on (auto-detected from model if None)
         """
         self.model = model
         self.tokenizer = tokenizer
         self.config = config or GenerationConfig()
         self.constrainer = constrainer or OptionConstrainer()
-        self.device = device
+        
+        # Auto-detect device from model if not specified
+        if device is None:
+            # Get device from model's first parameter
+            try:
+                self.device = next(model.parameters()).device
+            except StopIteration:
+                self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
         
         # Ensure model is in eval mode
         self.model.eval()
@@ -83,11 +92,118 @@ class TraceGenerator:
         Returns:
             List of OptionizedTrace objects
         """
-        traces = []
+        # Use batched generation for multiple samples
+        if num_samples > 1:
+            return self._generate_traces_batched(state, num_samples)
         
-        for _ in range(num_samples):
-            trace = self._generate_single_trace(state)
-            traces.append(trace)
+        return [self._generate_single_trace(state)]
+    
+    def _generate_traces_batched(
+        self,
+        state: LogicalState,
+        num_samples: int,
+    ) -> list[OptionizedTrace]:
+        """Generate multiple traces in parallel using batched inference."""
+        import copy
+        
+        # Build initial prompt once
+        prompt = self._build_prompt(state)
+        
+        # Initialize trace states for all samples - each needs its own state copy
+        trace_states = [
+            {
+                "steps": [],
+                "history": prompt,
+                "state": copy.deepcopy(state),  # Deep copy to avoid mutation issues
+                "done": False,
+            }
+            for _ in range(num_samples)
+        ]
+        
+        # Generate steps for all traces in parallel
+        for step_idx in range(self.config.max_steps):
+            # Find traces that are still active
+            active_indices = [i for i, ts in enumerate(trace_states) if not ts["done"]]
+            if not active_indices:
+                break
+            
+            # Batch generate next step for all active traces
+            prompts = [trace_states[i]["history"] + "\nThought:" for i in active_indices]
+            
+            # Tokenize all prompts
+            inputs = self.tokenizer(
+                prompts,
+                return_tensors="pt",
+                truncation=True,
+                max_length=2048,
+                padding=True,
+            ).to(self.device)
+            
+            # Generate for all in batch
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=self.config.max_thought_tokens + self.config.max_action_tokens,
+                    temperature=self.config.temperature if self.config.do_sample else 1.0,
+                    top_p=self.config.top_p if self.config.do_sample else 1.0,
+                    do_sample=self.config.do_sample,
+                    pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                )
+            
+            # Process each output
+            for batch_idx, trace_idx in enumerate(active_indices):
+                # Decode this output
+                input_len = inputs["attention_mask"][batch_idx].sum().item()
+                generated = self.tokenizer.decode(
+                    outputs[batch_idx][input_len:],
+                    skip_special_tokens=True,
+                )
+                
+                # Parse thought and action
+                thought, action = parse_thought_action("Thought: " + generated)
+                
+                if thought is None or action is None:
+                    trace_states[trace_idx]["done"] = True
+                    continue
+                
+                # Validate action
+                if action and self.config.validate_steps:
+                    is_valid, error = self.constrainer.validate_action(action)
+                    if not is_valid:
+                        action = self.constrainer.fix_action(
+                            action, trace_states[trace_idx]["state"].num_formulas
+                        )
+                
+                # Parse step
+                step = self._parse_step(step_idx, thought, action)
+                if step is None:
+                    trace_states[trace_idx]["done"] = True
+                    continue
+                
+                trace_states[trace_idx]["steps"].append(step)
+                trace_states[trace_idx]["history"] += f"\nThought: {thought}\nAction: {action}"
+                
+                # Check for terminal
+                if step.option_type == OptionType.CONCLUDE:
+                    trace_states[trace_idx]["done"] = True
+                elif step.result_formula:
+                    trace_states[trace_idx]["state"].add_formula(step.result_formula)
+        
+        # Build final traces
+        traces = []
+        for ts in trace_states:
+            final_answer = "UNKNOWN"
+            if ts["steps"] and ts["steps"][-1].option_type == OptionType.CONCLUDE:
+                conclude_arg = ts["steps"][-1].option_args[0] if ts["steps"][-1].option_args else 2
+                final_answer = ["TRUE", "FALSE", "UNKNOWN"][min(conclude_arg, 2)]
+            
+            traces.append(OptionizedTrace(
+                problem_id=state.problem_id,
+                initial_state=state,
+                steps=ts["steps"],
+                final_answer=final_answer,
+            ))
         
         return traces
     
@@ -142,33 +258,35 @@ class TraceGenerator:
         )
     
     def _build_prompt(self, state: LogicalState) -> str:
-        """Build the prompt for generation."""
-        lines = [
-            "You are a logical reasoning assistant. Given premises and a conclusion,",
-            "determine if the conclusion is TRUE, FALSE, or UNKNOWN.",
-            "Reason step by step using formal inference rules.",
-            "",
-            "For each step, provide:",
-            "Thought: Your reasoning in natural language",
-            "Action: <Option type=\"RULE_NAME\" args=\"[indices]\" />",
-            "",
-            "Available rules: MODUS_PONENS, MODUS_TOLLENS, UNIV_INSTANTIATION,",
-            "AND_INTRO, AND_ELIM, OR_INTRO, DISJUNCTIVE_SYLLOGISM, etc.",
-            "End with: <Option type=\"CONCLUDE\" args=\"[0/1/2]\" />",
-            "(0=TRUE, 1=FALSE, 2=UNKNOWN)",
-            "",
-            "---",
-            "",
-            "Premises:",
-        ]
+        """Build the prompt for generation.
         
+        Structure:
+        1. System instructions (helps guide the model)
+        2. Problem in EXACT training format (triggers learned behavior)
+        """
+        # System instructions to guide the model
+        instructions = """You are a logical reasoning assistant. Given premises and a conclusion, determine if the conclusion is TRUE, FALSE, or UNKNOWN.
+
+        For each reasoning step, output:
+        Thought: <explain which premises you're using and why>
+        Action: <Option type="RULE" args="[premise_indices]" />
+
+        Available rules: MODUS_PONENS, MODUS_TOLLENS, CONCLUDE
+        End with: <Option type="CONCLUDE" args="[0]" /> for TRUE, [1] for FALSE, [2] for UNKNOWN
+
+        ---
+
+        """
+        # Problem section - MUST match SFT training format exactly
+        problem_lines = ["Premises:"]
         for i, premise in enumerate(state.nl_premises):
-            lines.append(f"  [{i}] {premise}")
+            problem_lines.append(f"  [{i}] {premise}")
         
-        lines.append(f"\nConclusion to evaluate: {state.target_conclusion}")
-        lines.append("\nReasoning:")
+        problem_lines.append(f"\nConclusion to evaluate: {state.target_conclusion}")
+        problem_lines.append("\nDetermine if the conclusion is TRUE, FALSE, or UNKNOWN.")
+        problem_lines.append("\nReasoning:")
         
-        return "\n".join(lines)
+        return instructions + "\n".join(problem_lines)
     
     def _generate_step(
         self,

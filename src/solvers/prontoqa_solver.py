@@ -133,28 +133,63 @@ class PrOntoQASolver(FOLSolver):
         # follows from the ontology
         step_text = step.thought.lower()
         
-        # Try to extract entity and category from step text
-        # Pattern: "X is a Y" or "X is Y"
-        match = re.search(r"(\w+) is (?:a |an )?(\w+)", step_text)
+        # Try multiple patterns to extract entity and category
+        entity = None
+        category = None
+        
+        # Pattern 1: "conclude that X is Y" (new format)
+        match = re.search(r"conclude that (\w+) is (?:a |an )?(\w+)", step_text)
         if match:
             entity, category = match.groups()
-            if self.check_query(entity, category):
+        
+        # Pattern 2: "X is Y" (simple format)
+        if not entity:
+            match = re.search(r"(\w+) is (?:a |an )?(\w+)", step_text)
+            if match:
+                entity, category = match.groups()
+        
+        # Pattern 3: "derive that X is Y"
+        if not entity:
+            match = re.search(r"derive that (\w+) is (?:a |an )?(\w+)", step_text)
+            if match:
+                entity, category = match.groups()
+        
+        # Pattern 4: Look for "X is not Y" (negative)
+        is_negative = False
+        if not entity:
+            match = re.search(r"(\w+) is not (?:a |an )?(\w+)", step_text)
+            if match:
+                entity, category = match.groups()
+                is_negative = True
+        
+        if entity and category:
+            # Skip common words that aren't entities
+            if entity in ['the', 'a', 'an', 'it', 'this', 'that', 'we', 'can']:
+                entity = None
+        
+        if entity and category:
+            is_valid = self.check_query(entity, category)
+            # For negative claims, invert the check
+            if is_negative:
+                is_valid = not is_valid
+            
+            if is_valid:
                 result_formula = FOLFormula(
                     id=state.num_formulas,
                     nl_text=step.thought,
-                    fol_string=f"{category}({entity})",
+                    fol_string=f"{category}({entity})" if not is_negative else f"not {category}({entity})",
                     source="derived",
                     derived_by=step.option_type.name,
                 )
                 return VerificationResult(
                     status=ValidityStatus.VALID,
                     new_formula=result_formula,
-                    message=f"Verified: {entity} is a {category}",
+                    message=f"Verified: {entity} is {'not ' if is_negative else ''}{category}",
                 )
             else:
                 return VerificationResult(
                     status=ValidityStatus.INVALID,
-                    message=f"Cannot derive: {entity} is a {category}",
+                    message=f"Cannot derive: {entity} is {'not ' if is_negative else ''}{category}",
                 )
         
         # If we can't parse the step, assume it's valid

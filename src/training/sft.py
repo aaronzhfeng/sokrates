@@ -139,18 +139,32 @@ def setup_model_and_tokenizer(config: SFTConfig):
         Tuple of (model, tokenizer)
     """
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    import os
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
-    # Load model
-    model = AutoModelForCausalLM.from_pretrained(
-        config.model_name,
-        torch_dtype=torch.bfloat16 if config.bf16 else torch.float32,
-        device_map="auto",
+    # Check if running in distributed mode (accelerate sets these env vars)
+    is_distributed = (
+        os.environ.get("WORLD_SIZE") is not None and 
+        int(os.environ.get("WORLD_SIZE", "1")) > 1
     )
+    
+    # Load model
+    # Don't use device_map="auto" in distributed mode - accelerate handles device placement
+    if is_distributed:
+        model = AutoModelForCausalLM.from_pretrained(
+            config.model_name,
+            torch_dtype=torch.bfloat16 if config.bf16 else torch.float32,
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            config.model_name,
+            torch_dtype=torch.bfloat16 if config.bf16 else torch.float32,
+            device_map="auto",
+        )
     
     # Apply LoRA if enabled
     if config.use_peft:
