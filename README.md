@@ -13,6 +13,80 @@ SOKRATES improves LLM logical reasoning by:
 3. **DPO alignment** - Distilling solver knowledge into the LLM via Direct Preference Optimization
 4. **Iterative OaK loop** - Running generate→verify→train cycles to continuously improve
 
+## 🏆 Results
+
+| Model | PrOntoQA Accuracy | Step Validity |
+|-------|-------------------|---------------|
+| Base LLM (Qwen3-8B) | ~85% | - |
+| + SFT | 93.3% | 11.3% |
+| + DPO iter1 | 96.8% | 44.7% |
+| + DPO iter2 | 98.1% | 83.5% |
+| **+ DPO iter3** | **98.2%** | **91.8%** |
+
+## 🤗 Pretrained Models
+
+All models are available on HuggingFace:
+
+| Model | Accuracy | Download |
+|-------|----------|----------|
+| SFT (Optionized) | 93.3% | [`sokrates-qwen3-8b-prontoqa-sft-optionized`](https://huggingface.co/Moonlight556/sokrates-qwen3-8b-prontoqa-sft-optionized) |
+| DPO Iteration 1 | 96.8% | [`sokrates-qwen3-8b-prontoqa-oak-dpo-iter1`](https://huggingface.co/Moonlight556/sokrates-qwen3-8b-prontoqa-oak-dpo-iter1) |
+| DPO Iteration 2 | 98.1% | [`sokrates-qwen3-8b-prontoqa-oak-dpo-iter2`](https://huggingface.co/Moonlight556/sokrates-qwen3-8b-prontoqa-oak-dpo-iter2) |
+| **DPO Iteration 3** | **98.2%** | [`sokrates-qwen3-8b-prontoqa-oak-dpo-iter3`](https://huggingface.co/Moonlight556/sokrates-qwen3-8b-prontoqa-oak-dpo-iter3) |
+
+### Load Pretrained Model
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Load the best model (98.2% accuracy)
+model = AutoModelForCausalLM.from_pretrained(
+    "Moonlight556/sokrates-qwen3-8b-prontoqa-oak-dpo-iter3",
+    torch_dtype="bfloat16",
+    device_map="auto"
+)
+tokenizer = AutoTokenizer.from_pretrained(
+    "Moonlight556/sokrates-qwen3-8b-prontoqa-oak-dpo-iter3"
+)
+```
+
+## 📊 Dataset
+
+Training data and generated traces are available on HuggingFace:
+
+**Dataset**: [`Moonlight556/sokrates-prontoqa-data`](https://huggingface.co/datasets/Moonlight556/sokrates-prontoqa-data)
+
+| File | Description | Records |
+|------|-------------|---------|
+| `processed/prontoqa_train.jsonl` | SFT training data with optionized traces | 14,346 |
+| `processed/prontoqa_test.jsonl` | Test set | 1,594 |
+| `processed/folio_train.jsonl` | FOLIO training data | 1,001 |
+| `processed/folio_validation.jsonl` | FOLIO validation | 203 |
+| `traces/iter0_traces.jsonl` | Traces from SFT model | 28,692 |
+| `traces/iter1_traces.jsonl` | Traces from DPO iter1 | 28,692 |
+| `traces/iter2_traces.jsonl` | Traces from DPO iter2 | 28,692 |
+| `eval/prontoqa_final/traces.jsonl` | Final evaluation traces | 1,594 |
+
+### Load Dataset
+
+```python
+from datasets import load_dataset
+
+# Load training data
+train_data = load_dataset(
+    "Moonlight556/sokrates-prontoqa-data", 
+    data_files="processed/prontoqa_train.jsonl",
+    split="train"
+)
+
+# Load DPO traces
+traces = load_dataset(
+    "Moonlight556/sokrates-prontoqa-data",
+    data_files="traces/iter0_traces.jsonl", 
+    split="train"
+)
+```
+
 ## Installation
 
 ```bash
@@ -183,11 +257,16 @@ dpo:
 
 ## Hardware Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| GPU | 1× RTX 4090 (24GB) | 4× A40 (48GB each) |
-| RAM | 64GB | 128GB |
-| Storage | 100GB SSD | 500GB NVMe |
+| Component | Minimum | Recommended | Used in Paper |
+|-----------|---------|-------------|---------------|
+| GPU | 1× RTX 4090 (24GB) | 4× A100 (80GB each) | 6× B200 (183GB each) |
+| RAM | 64GB | 128GB | 256GB |
+| Storage | 100GB SSD | 500GB NVMe | 1TB NVMe |
+
+**Training Time** (on 6× B200):
+- SFT: ~50 minutes
+- DPO per iteration: ~20 minutes
+- Full pipeline (SFT + 3 DPO): ~2 hours
 
 ## Citation
 
