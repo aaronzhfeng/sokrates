@@ -1,0 +1,99 @@
+# Toy Test Configuration for SOKRATES
+# =====================================
+# SMOKE TEST: Single GPU, ~5-10 minutes total
+# Use this to validate the full pipeline before long runs
+
+# Supervised Fine-Tuning (SFT) - Minimal for testing
+sft:
+  output_dir: "outputs/sft_test"
+  num_epochs: 1
+  batch_size: 2
+  gradient_accumulation_steps: 2
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  max_seq_length: 1024
+  logging_steps: 5
+  save_steps: 50
+  eval_steps: 50
+  save_total_limit: 1
+  bf16: true
+  gradient_checkpointing: true
+  train_split: 0.9
+
+# Direct Preference Optimization (DPO) - Minimal
+dpo:
+  output_dir: "outputs/dpo_test"
+  beta: 0.1
+  loss_type: "sigmoid"
+  
+  num_epochs: 1
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 5.0e-6
+  warmup_ratio: 0.1
+  max_length: 1024
+  max_prompt_length: 512
+  
+  logging_steps: 5
+  save_steps: 50
+  bf16: true
+  num_gpus: 1
+
+# OaK Loop - SMOKE TEST (20 problems, 2 samples, 1 iteration)
+oak_loop:
+  output_dir: "outputs/oak_test"
+  checkpoint_dir: "checkpoints"
+  
+  # MINIMAL settings for smoke test (but enough for pairs)
+  num_iterations: 1
+  samples_per_problem: 2    # Need 2+ for preference pairs
+  max_problems: 20          # 20 problems = ~40 traces
+  max_val_problems: 10      # Only 10 for validation in smoke test
+  
+  train_option_head: false
+  option_head_lr: 1.0e-4
+  option_head_epochs: 1
+  
+  log_calibration: false
+  save_traces: true         # Save traces for debugging
+
+# Trace generation - Fast
+trace_generation:
+  max_steps: 4
+  temperature: 1.0
+  top_p: 1.0
+  do_sample: false          # Greedy
+  max_thought_tokens: 40
+  max_action_tokens: 20
+  use_constrained_decoding: false
+  validate_steps: false
+
+# Preference pair construction
+preference_pairs:
+  require_valid_winner: false  # More lenient for small test
+  max_pairs_per_problem: 2
+  min_validity_gap: 0.1
+
+# Experiment tracking - Disabled for smoke test
+wandb:
+  enabled: false
+  project: "sokrates-test"
+  entity: null
+  tags:
+    - "smoke-test"
+
+# Hardware settings
+hardware:
+  seed: 42
+  mixed_precision: "bf16"
+  gradient_checkpointing: true
+  num_workers: 2
+  num_gpus: 1
+  
+  gpu: "any"
+  vram: "any"
+  # TIME ESTIMATES:
+  estimated_trace_gen: "~1-2 min"
+  estimated_dpo: "~2-3 min"
+  estimated_total: "~5-10 min"
+

@@ -1,110 +1,101 @@
 # Training Configuration for SOKRATES
 # ====================================
-# Optimized for: 1× NVIDIA H100 PCIe (80GB VRAM)
-# Estimated total training time: 3-4 hours
+# FIXED: Natural language thoughts + correct premise indices
+# 6× NVIDIA B200 - Target: <4 hours total OaK-DPO
 
-# Supervised Fine-Tuning (SFT)
+# Supervised Fine-Tuning (SFT) - RE-RUN WITH FIXED DATA
 sft:
   output_dir: "outputs/sft"
-  num_epochs: 3
-  batch_size: 4              # Safe middle ground for H100 with 8B model
-  gradient_accumulation_steps: 8  # Effective batch = 32
-  learning_rate: 2.0e-5
-  warmup_ratio: 0.1
-  max_seq_length: 1024       # Keep shorter for faster training
-  
-  # Logging
+  num_epochs: 5              # Increased from 3 → 5 for better learning
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  learning_rate: 1.0e-5      # Reduced from 2e-5 to prevent overfitting
+  warmup_ratio: 0.15         # Slightly longer warmup
+  max_seq_length: 2048
   logging_steps: 10
   save_steps: 500
   eval_steps: 500
-  save_total_limit: 2        # Keep only 2 checkpoints to save disk space
-  
-  # Hardware
+  save_total_limit: 3
   bf16: true
   gradient_checkpointing: true
-  
-  # Data
   train_split: 0.9
 
 # Direct Preference Optimization (DPO)
 dpo:
   output_dir: "outputs/dpo"
-  beta: 0.1  # KL penalty coefficient
-  loss_type: "sigmoid"  # or "hinge"
+  beta: 0.1
+  loss_type: "sigmoid"
   
   num_epochs: 1
-  batch_size: 4              # H100: increased from 2
-  gradient_accumulation_steps: 8  # H100: decreased from 16 (effective batch = 32)
+  batch_size: 8              # Increased for faster training
+  gradient_accumulation_steps: 1  # Effective batch = 8 × 1 × 6 = 48
   learning_rate: 5.0e-6
   warmup_ratio: 0.1
-  max_length: 2048
-  max_prompt_length: 1024
+  max_length: 1536           # Reduced for speed
+  max_prompt_length: 768
   
-  # Logging
-  logging_steps: 10
-  save_steps: 200
-  
-  # Hardware
+  logging_steps: 20
+  save_steps: 500
   bf16: true
+  num_gpus: 6
 
-# OaK Loop
+# OaK Loop - MAXIMUM SPEED
 oak_loop:
   output_dir: "outputs/oak_loop"
   checkpoint_dir: "checkpoints"
   
-  # Loop parameters
-  num_iterations: 3
-  samples_per_problem: 4     # H100: reduced from 8 for faster training (3-4 hrs total)
+  # MAXIMUM SPEED settings
+  num_iterations: 2
+  samples_per_problem: 2
+  max_problems: 1500
   
-  # Option head training
-  train_option_head: true
+  # SKIP option head - not critical for main results
+  train_option_head: false   # Save ~10 min per iteration
   option_head_lr: 1.0e-4
-  option_head_epochs: 3
+  option_head_epochs: 1
   
-  # Logging
-  log_calibration: true
-  save_traces: true
+  log_calibration: false     # Skip calibration analysis
+  save_traces: false
 
-# Trace generation during training
+# Trace generation - BALANCED (natural language thoughts need more tokens)
 trace_generation:
-  max_steps: 15
-  temperature: 0.7
+  max_steps: 8               # PrOntoQA: most proofs are 3-5 steps, allow buffer
+  temperature: 0.7           # Some diversity for DPO preference pairs
   top_p: 0.9
-  do_sample: true
-  max_thought_tokens: 150
-  max_action_tokens: 50
-  use_constrained_decoding: true
-  validate_steps: true
+  do_sample: true            # Enable sampling for diversity
+  max_thought_tokens: 150    # Increased for natural language thoughts
+  max_action_tokens: 50      # Actions are structured but allow buffer
+  use_constrained_decoding: false  # Skip validation overhead
+  validate_steps: false
 
 # Preference pair construction
 preference_pairs:
   require_valid_winner: true
-  max_pairs_per_problem: 10
-  min_validity_gap: 0.2  # Min gap in step validity between winner/loser
+  max_pairs_per_problem: 5   # Reduced from 10
+  min_validity_gap: 0.2
 
 # Experiment tracking
 wandb:
   enabled: true
   project: "sokrates"
-  entity: null  # Your wandb username/team
+  entity: null
   tags:
     - "oak"
     - "dpo"
-    - "logical-reasoning"
+    - "fast-run"
 
 # Hardware settings
-# Target: 1× NVIDIA H100 PCIe (80GB VRAM)
 hardware:
   seed: 42
   mixed_precision: "bf16"
   gradient_checkpointing: true
-  num_workers: 4
+  num_workers: 8
+  num_gpus: 6
   
-  # H100-specific settings
-  gpu: "H100 PCIe"
-  vram: "80GB"
-  estimated_sft_time: "20-30 min"
-  estimated_oak_time: "2.5-3 hrs"
-  estimated_total_time: "3-4 hrs"
-  estimated_cost: "$7-10 @ $2.39/hr"
-
+  gpu: "NVIDIA B200"
+  vram: "183GB"
+  # TIME ESTIMATES (with optimizations):
+  estimated_trace_gen: "30-45 min/iteration"
+  estimated_dpo: "15-20 min/iteration"
+  estimated_per_iteration: "~1 hour"
+  estimated_total_oak: "~2-3 hours"
