@@ -1,0 +1,15 @@
+{
+  "traces_path": "outputs/traces/iter1/traces.jsonl",
+  "model_path": "outputs/dpo/iter1/final",
+  "num_traces": 28692,
+  "num_pairs": 9732,
+  "num_epochs": 1,
+  "batch_size": 4,
+  "learning_rate": 5e-06,
+  "beta": 0.1,
+  "max_length": 1024,
+  "gradient_accumulation_steps": 2,
+  "require_valid_winner": true,
+  "min_validity_gap": 0.1,
+  "timestamp": "2025-12-10T08:21:44.385988"
+}

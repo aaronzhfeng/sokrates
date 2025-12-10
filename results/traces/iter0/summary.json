@@ -1,0 +1,55 @@
+{
+  "iteration": 0,
+  "total_traces": 28692,
+  "correct_traces": 26758,
+  "accuracy": 0.9325944514150286,
+  "valid_traces": 3237,
+  "valid_rate": 0.11281890422417398,
+  "config": {
+    "max_steps": 15,
+    "max_tokens_per_step": 200,
+    "temperature": 0.5,
+    "top_p": 0.95,
+    "num_problems": 2391,
+    "samples_per_problem": 2,
+    "seed": 44
+  },
+  "per_gpu_summaries": [
+    {
+      "gpu": "gpu2",
+      "traces": 4782,
+      "correct": 4463,
+      "accuracy": 0.9332915098285236
+    },
+    {
+      "gpu": "gpu3",
+      "traces": 4782,
+      "correct": 4454,
+      "accuracy": 0.931409452112087
+    },
+    {
+      "gpu": "gpu4",
+      "traces": 4782,
+      "correct": 4472,
+      "accuracy": 0.9351735675449603
+    },
+    {
+      "gpu": "gpu5",
+      "traces": 4782,
+      "correct": 4442,
+      "accuracy": 0.9289000418235048
+    },
+    {
+      "gpu": "gpu6",
+      "traces": 4782,
+      "correct": 4496,
+      "accuracy": 0.9401923881221247
+    },
+    {
+      "gpu": "gpu7",
+      "traces": 4782,
+      "correct": 4431,
+      "accuracy": 0.9265997490589711
+    }
+  ]
+}

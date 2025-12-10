@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-12-10T08:52:37.292960",
+  "model": "outputs/dpo/iter3/final",
+  "num_problems": 1594,
+  "samples_per_problem": 1,
+  "total_traces": 1594,
+  "valid_traces": 1464,
+  "correct_traces": 1566,
+  "accuracy": 0.9824341279799247,
+  "step_validity": 0.9865842736879814,
+  "generation_time_seconds": 174.843368,
+  "total_time_seconds": 175.045626,
+  "traces_per_second": 9.116731267725294,
+  "config": {
+    "max_steps": 10,
+    "max_tokens_per_step": 200,
+    "temperature": 0.0,
+    "top_p": 0.95,
+    "num_problems": 0,
+    "samples_per_problem": 1,
+    "seed": 42
+  }
+}

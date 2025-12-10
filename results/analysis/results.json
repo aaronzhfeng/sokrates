@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-12-09T23:19:02.188515",
+  "sft": {
+    "total_steps": 606,
+    "final_train_loss": 0.0129,
+    "final_eval_loss": 0.012927687726914883,
+    "min_train_loss": 0.0128,
+    "initial_train_loss": 3.478,
+    "loss_reduction": 0.9962909718228867,
+    "convergence_step": 60,
+    "final_grad_norm": 0.07399946451187134,
+    "mean_grad_norm": 0.38436111678602175
+  },
+  "oak_dpo": {}
+}

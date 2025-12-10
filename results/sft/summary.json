@@ -1,0 +1,9 @@
+{
+  "experiment_name": "sft",
+  "timestamp": "20251210_041849",
+  "exp_dir": "outputs/sft/20251210_041849",
+  "finished_at": "2025-12-10T05:10:08.867081",
+  "final_metrics": {
+    "final_loss": 0.0991
+  }
+}

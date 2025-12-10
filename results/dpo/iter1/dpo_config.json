@@ -1,0 +1,15 @@
+{
+  "traces_path": "outputs/traces/iter0/traces.jsonl",
+  "model_path": "outputs/sft/latest/merged",
+  "num_traces": 28692,
+  "num_pairs": 8834,
+  "num_epochs": 1,
+  "batch_size": 4,
+  "learning_rate": 5e-06,
+  "beta": 0.1,
+  "max_length": 1024,
+  "gradient_accumulation_steps": 2,
+  "require_valid_winner": true,
+  "min_validity_gap": 0.1,
+  "timestamp": "2025-12-10T07:07:52.607663"
+}

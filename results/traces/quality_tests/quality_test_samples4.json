@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-12-10T05:48:16.895913",
+  "model": "outputs/sft/latest/merged",
+  "num_problems": 50,
+  "samples_per_problem": 4,
+  "total_traces": 200,
+  "valid_traces": 18,
+  "correct_traces": 192,
+  "accuracy": 0.96,
+  "step_validity": 0.35290363752393106,
+  "generation_time_seconds": 56.61162,
+  "total_time_seconds": 56.656118,
+  "traces_per_second": 3.5328436105520384,
+  "config": {
+    "max_steps": 10,
+    "max_tokens_per_step": 200,
+    "temperature": 0.5,
+    "top_p": 0.95,
+    "num_problems": 50,
+    "samples_per_problem": 4,
+    "seed": 42
+  }
+}
