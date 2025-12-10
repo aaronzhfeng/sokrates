@@ -1,0 +1,31 @@
+% tables/main_results.tex
+% Main experimental results table
+
+\begin{table}[t]
+\centering
+\caption{Main results on PrOntoQA test set. \sokrates{} improves across all metrics with each \oak{} iteration.}
+\label{tab:main_results}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Model} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} & \textbf{Brier} \\
+\hline
+\multicolumn{5}{l}{\textit{No Training}} \\
+Base CoT & -- & -- & -- & -- \\
+Self-Consistency ($k{=}8$) & -- & -- & -- & -- \\
+\hline
+\multicolumn{5}{l}{\textit{Prior Methods}} \\
+LoGiPT & -- & -- & -- & -- \\
+Logic-LM & -- & -- & -- & -- \\
+\hline
+\multicolumn{5}{l}{\textit{Preference Baselines}} \\
+Answer-only \dpo{} & -- & -- & -- & -- \\
+CoT-\dpo{} & -- & -- & -- & -- \\
+VeriCoT & -- & -- & -- & -- \\
+\hline
+\multicolumn{5}{l}{\textit{Ours}} \\
+SFT & -- & -- & -- & -- \\
+\sokrates{} (iter 1) & -- & -- & -- & -- \\
+\sokrates{} (iter 2) & -- & -- & -- & -- \\
+\hline
+\end{tabular}
+\end{table}

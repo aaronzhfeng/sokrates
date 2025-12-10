@@ -1,0 +1,83 @@
+% figures/architecture.tex
+% SOKRATES architecture diagram using TikZ
+
+\begin{figure*}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    % Node styles
+    data/.style={rectangle, draw=black!70, fill=blue!8, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
+    process/.style={rectangle, draw=black!70, fill=orange!12, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small, rounded corners=2pt},
+    model/.style={rectangle, draw=black!70, fill=green!10, minimum width=2cm, minimum height=0.8cm, align=center, font=\small, rounded corners=2pt},
+    output/.style={rectangle, draw=black!70, fill=purple!10, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small, rounded corners=2pt},
+    loopbox/.style={rectangle, draw=black!60, fill=yellow!5, rounded corners=5pt, inner sep=8pt},
+    arrow/.style={->, >=stealth, thick, black!70},
+    looparrow/.style={->, >=stealth, thick, black!50, dashed},
+    label/.style={font=\footnotesize\itshape, text=black!60},
+]
+
+% === LEFT: Data Sources ===
+\node[data] (prontoqa) at (-0.4, 1.0) {PrOntoQA};
+\node[data] (folio) at (-0.4, -0.2) {FOLIO};
+\node[process] (optionizer) at (2.35, 0.4) {Optionizer};
+
+% === CENTER-LEFT: SFT ===
+\node[model] (sft) at (5.5, -0.4) {SFT};
+\node[model] (pi0) at (5.5, 0.8) {$\pi_0$};
+
+% === CENTER: OaK Loop ===
+\begin{scope}[shift={(11.5, 0.4)}]
+    % Loop background
+    \node[loopbox, minimum width=9.5cm, minimum height=3.8cm] (loopbg) at (0, 0) {};
+    \node[label, anchor=north] at (0, 2.2) {\textbf{Micro \oak{} Loop} (repeat $N{=}2$ iterations)};
+    
+    % Loop nodes
+    \node[process] (generate) at (-3.1, 0.8) {Generate\\Traces};
+    \node[process] (verify) at (-0.5, 0.8) {Solver\\Verify};
+    \node[process] (qhat) at (2.4, 0.8) {Update\\$\qhat$};
+    \node[process] (prefs) at (-1.6, -1.1) {Build\\Preferences};
+    \node[process] (dpo) at (1.6, -1.1) {DPO};
+    
+    % Loop arrows
+    \draw[arrow] (generate) -- (verify);
+    \draw[arrow] (verify) -- (qhat);
+    \draw[arrow] (qhat.south) -- ++(0, -0.3) -| (prefs.north);
+    \draw[arrow] (prefs) -- (dpo);
+    \draw[looparrow] (dpo.east) -- ++(0.8, 0) |- (generate.east);
+\end{scope}
+
+% === RIGHT: Outputs (aligned on a common x, tied to loop)
+\node[right=2.6cm of loopbg.east] (output_anchor) {};
+\node[output] (pistar) at (output_anchor |- pi0) {Aligned $\pi^*$};
+\node[output] (qhatstar) at (output_anchor |- sft) {Calibrated $\qhat^*$};
+
+% === Solver (external, positioned relative to loop) ===
+\node[data, fill=red!8, below=1.0cm of prefs] (solver) {FOL Solver (Z3)};
+
+% === Main Flow Arrows (all relative) ===
+\draw[arrow] (prontoqa.east) -- ++(0.3, 0) |- (optionizer.west);
+\draw[arrow] (folio.east) -- ++(0.3, 0) |- (optionizer.west);
+\draw[arrow] (optionizer.south) |- node[pos=0.7, above, label, yshift=2pt] {traces} node[pos=0.7, below, font=\tiny, text=black!50] {proof $\rightarrow$ Thought/Action} (sft.west);
+\draw[arrow] (sft) -- (pi0);
+\draw[arrow] (pi0.east) -- ++(1.0, 0) |- (generate.west);
+
+% Arrow from loop to outputs (relative to nodes)
+\draw[arrow] (loopbg.east |- pistar) -- (pistar.west);
+\draw[arrow] (loopbg.east |- qhatstar) -- (qhatstar.west);
+
+% Solver connection (relative to nodes)
+\draw[arrow, black!50] (solver.north) -- (prefs.south);
+
+% === Labels (relative to nodes) ===
+\node[label, above=0.8cm of prontoqa] {\textbf{Data}};
+\node[label, above=0.5cm of pi0] {\textbf{Init}};
+\node[label, above=0.3cm of pistar] {\textbf{Output}};
+
+% Annotations (relative to nodes)
+\node[font=\tiny, text=black!50, below=0.5cm of sft] {format learning};
+
+\end{tikzpicture}
+}%
+\caption{\sokrates{} architecture. \textbf{Left:} PrOntoQA/FOLIO problems are converted to optionized Thought/Action traces. \textbf{Center:} After SFT initialization, the micro \oak{} loop iterates: (1) generate traces from current policy, (2) verify each step with the FOL solver, (3) update the option-success predictor $\qhat$, (4) construct preference pairs, and (5) apply \dpo{} to improve the policy. \textbf{Right:} Final outputs are an aligned policy $\pi^*$ and a calibrated knowledge head $\qhat^*$.}
+\label{fig:architecture}
+\end{figure*}

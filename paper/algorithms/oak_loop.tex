@@ -1,0 +1,20 @@
+% algorithms/oak_loop.tex
+% SOKRATES training loop algorithm
+
+\begin{algorithm}[tb]
+\caption{\sokrates{} Training Loop}
+\label{alg:oak}
+\textbf{Input}: SFT model $\pi_0$, problems $\mathcal{P}$, solver\\
+\textbf{Output}: Aligned model $\pi^*$, option head $\qhat^*$
+\begin{algorithmic}[1]
+\FOR{iteration $i = 1, \ldots, N$}
+    \STATE \textbf{Generate:} Sample $K{=}8$ traces/problem from $\pi_{i-1}$
+    \STATE \textbf{Verify:} Label each step with solver (Eq.~\ref{eq:step_valid})
+    \STATE \textbf{Update $\qhat$:} Train option head (Eq.~\ref{eq:qhat_loss})
+    \STATE \textbf{Build preferences:} Construct $(\tau_w, \tau_l)$ pairs
+    \STATE \textbf{\dpo{}:} Update $\pi_{i-1} \rightarrow \pi_i$ (Eq.~\ref{eq:dpo})
+\ENDFOR
+\STATE \textbf{return} $\pi_N$, $\qhat$
+\end{algorithmic}
+\end{algorithm}
+

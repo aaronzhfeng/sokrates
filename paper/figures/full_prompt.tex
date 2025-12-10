@@ -1,0 +1,26 @@
+% figures/full_prompt.tex
+% Complete prompt template for appendix
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.95\columnwidth}{
+\small
+\texttt{You are a logical reasoning assistant. Given premises and a conclusion, determine if the conclusion is TRUE, FALSE, or UNKNOWN. Reason step by step using formal inference rules.}\\[0.5em]
+\texttt{For each step, provide:}\\
+\texttt{Thought: Your reasoning in natural language}\\
+\texttt{Action: <Option type="RULE\_NAME" args="[indices]" />}\\[0.5em]
+\texttt{Available rules: MODUS\_PONENS, MODUS\_TOLLENS, UNIV\_INSTANTIATION, AND\_INTRO, AND\_ELIM, OR\_INTRO, DISJUNCTIVE\_SYLLOGISM, etc.}\\
+\texttt{End with: <Option type="CONCLUDE" args="[0/1/2]" />}\\
+\texttt{(0=TRUE, 1=FALSE, 2=UNKNOWN)}\\[0.5em]
+\texttt{---}\\[0.5em]
+\texttt{Premises:}\\
+\texttt{~~[0] Every wumpus is a tumpus.}\\
+\texttt{~~[1] Every tumpus is a rompus.}\\
+\texttt{~~[2] Stella is a wumpus.}\\[0.5em]
+\texttt{Conclusion to evaluate: Stella is a rompus.}\\[0.5em]
+\texttt{Reasoning:}
+}}
+\caption{Complete prompt template with example problem from PrOntoQA.}
+\label{fig:full_prompt}
+\end{figure}
+
