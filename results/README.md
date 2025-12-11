@@ -1,95 +1,167 @@
 # SOKRATES Experimental Results
 
 This folder contains metrics, summaries, and figures from our experiments.
-Model checkpoints are NOT included (too large) but can be regenerated.
+Model checkpoints are NOT included (too large) but can be regenerated or downloaded from HuggingFace.
 
-## Final Results: PrOntoQA
+---
 
-| Stage | Accuracy | Step Validity | Notes |
-|-------|----------|---------------|-------|
-| SFT (iter 0) | 93.3% | 11.3% | Initial supervised fine-tuning |
-| DPO iter 1 | 96.8% | 44.7% | First solver-guided iteration |
-| DPO iter 2 | 98.1% | 83.5% | Second iteration |
-| DPO iter 3 | **98.2%** | 91.8% | Final model |
+## Main Results: PrOntoQA
+
+| Model | Accuracy | Step Validity | Trace Validity |
+|-------|----------|---------------|----------------|
+| Base Model (CoT) | 44.4% | N/A | N/A |
+| Self-Consistency (k=8) | 53.8% | N/A | N/A |
+| **SFT** | 94.2% | 27.3% | 2.1% |
+| **DPO iter1** | 95.9% | 87.8% | 71.3% |
+| **DPO iter2** | 97.6% | 98.5% | 92.0% |
+| **DPO iter3** | **98.3%** | **98.7%** | **91.8%** |
+
+## Main Results: FOLIO (Transfer)
+
+| Model | Accuracy | Step Validity | Trace Validity |
+|-------|----------|---------------|----------------|
+| Base Model (CoT) | 42.9% | N/A | N/A |
+| Self-Consistency (k=8) | 42.9% | N/A | N/A |
+| PrOntoQA SFT → FOLIO | 45.3% | 46.5% | 9.9% |
+| PrOntoQA DPO iter3 → FOLIO | 53.2% | 48.3% | 14.8% |
+| **FOLIO DPO iter1** | 51.7% | 46.7% | 15.8% |
+| **FOLIO DPO iter2** | 51.2% | 46.3% | 13.3% |
+| **FOLIO DPO iter3** | **51.2%** | **47.2%** | **13.8%** |
+
+## Ablation Results
+
+| Model | Accuracy | Step Validity | Description |
+|-------|----------|---------------|-------------|
+| SOKRATES (DPO iter1) | 95.9% | 87.8% | Full approach |
+| **w/o Solver (Answer-only DPO)** | 95.5% | ~31.6%* | Solver verification removed |
+
+*Note: Step validity in ablation measures per-step correctness, not trace-level validity.
+
+**Key Finding**: Without solver verification, accuracy remains high but step validity drops dramatically, showing that solver-in-the-loop is crucial for reasoning quality.
+
+---
 
 ## Directory Structure
 
 ```
 results/
-├── sft/                    # SFT training metrics
-│   ├── summary.json        # Final training summary
-│   ├── training_history.json # Loss curves per step
-│   ├── metrics.jsonl       # Logged metrics
-│   └── config.json         # Training configuration
+├── README.md                    # This file
 │
-├── dpo/                    # DPO training metrics
+├── eval/                        # All evaluation results
+│   ├── checkpoints/             # Per-checkpoint evaluations
+│   │   ├── prontoqa_sft/
+│   │   ├── prontoqa_dpo_iter1/
+│   │   ├── prontoqa_dpo_iter2/
+│   │   ├── prontoqa_dpo_iter3/
+│   │   ├── folio_dpo_iter1/
+│   │   ├── folio_dpo_iter2/
+│   │   └── folio_dpo_iter3/
+│   │
+│   ├── baselines/               # No-training baselines
+│   │   ├── prontoqa_base_cot/
+│   │   ├── prontoqa_self_consistency/
+│   │   ├── folio_base_cot/
+│   │   └── folio_self_consistency/
+│   │
+│   ├── transfer/                # Cross-dataset transfer
+│   │   ├── prontoqa_sft_to_folio/
+│   │   ├── prontoqa_dpo_iter3_to_folio/
+│   │   └── folio_dpo_iter3_to_prontoqa/
+│   │
+│   ├── dpo_iter1/               # Legacy eval (subset)
+│   └── prontoqa_final/          # Legacy eval
+│
+├── ablations/                   # Ablation studies
+│   └── wo_solver_answer_only_dpo/  # w/o solver verification
+│
+├── sft/                         # SFT training metrics
+│   ├── summary.json
+│   ├── training_history.json
+│   ├── metrics.jsonl
+│   └── config.json
+│
+├── dpo/                         # DPO training metrics
 │   ├── iter1/
-│   │   ├── training_summary.json
-│   │   └── dpo_config.json
 │   ├── iter2/
 │   └── iter3/
 │
-├── traces/                 # Trace generation summaries
-│   ├── iter0/summary.json  # SFT model traces
-│   ├── iter1/summary.json  # After DPO iter1
-│   ├── iter2/summary.json  # After DPO iter2
-│   └── quality_tests/      # Hyperparameter search
-│       ├── quality_test_t0.0.json   # Temperature sweep
-│       ├── quality_test_t0.3.json
-│       ├── quality_test_t0.5.json
-│       ├── quality_test_t0.7.json
-│       ├── quality_test_t1.0.json
-│       ├── quality_test_steps5.json  # Max steps sweep
-│       ├── quality_test_steps15.json
-│       └── quality_test_samples4.json # Samples per problem
+├── traces/                      # Trace generation summaries
+│   ├── iter0/                   # SFT model traces
+│   ├── iter1/                   # After DPO iter1
+│   ├── iter2/                   # After DPO iter2
+│   └── quality_tests/           # Hyperparameter search
 │
-├── eval/                   # Evaluation results
-│   ├── dpo_iter1/summary.json
-│   └── prontoqa_final/summary.json  # Final 98.2% accuracy
-│
-├── analysis/               # Analysis outputs
+├── analysis/                    # Analysis outputs
 │   ├── hyperparameter_search.json
 │   ├── hyperparameter_search.csv
-│   ├── results.json
 │   └── results_table.tex
 │
-└── figures/                # Training visualization
+└── figures/                     # Training visualizations
     ├── sft_loss.png
-    ├── sft_lr.png
-    ├── sft_grad_norm.png
     ├── sft_combined.png
-    └── sft_training.png
+    └── ...
 ```
 
-## Key Findings
+---
 
-### Hyperparameter Search (Temperature)
-| Temperature | Accuracy | Step Validity | Diversity |
-|-------------|----------|---------------|-----------|
-| 0.0 (greedy) | 90.0% | 40.5% | Low |
-| 0.3 | 91.5% | 38.2% | Medium |
-| 0.5 | 92.0% | 35.8% | Good |
-| 0.7 | 90.5% | 32.1% | High |
-| 1.0 | 85.0% | 28.4% | Very High |
+## Key Metrics Definitions
 
-**Best for DPO training**: T=0.5 (balances accuracy with diversity for preference pairs)
+| Metric | Definition |
+|--------|------------|
+| **Accuracy** | % of problems with correct final answer |
+| **Step Validity** | % of reasoning steps verified correct by solver |
+| **Trace Validity** | % of traces with ALL steps valid |
 
-### Training Progression
-- SFT teaches the Thought/Action format
-- DPO iter1: Large improvement in step validity
-- DPO iter2-3: Refinement, diminishing returns
+---
+
+## Hyperparameter Search (Temperature)
+
+| Temperature | Accuracy | Step Validity | Best For |
+|-------------|----------|---------------|----------|
+| 0.0 (greedy) | 90.0% | 40.5% | Final evaluation |
+| 0.3 | 91.5% | 38.2% | - |
+| **0.5** | **92.0%** | **35.8%** | **DPO training** |
+| 0.7 | 90.5% | 32.1% | - |
+| 1.0 | 85.0% | 28.4% | - |
+
+**Recommendation**: T=0.5 for trace generation (diversity), T=0.0 for evaluation (consistency)
+
+---
+
+## Hardware
+
+- 6× NVIDIA B200 (183GB VRAM each)
+- GPUs 2-7 on mlsys-b200 cluster
+- Training time: ~3-4 hours total
+
+---
 
 ## Regenerating Results
 
 ```bash
-# Regenerate from scratch (requires ~6 B200 GPUs, ~3 hours)
+# Full PrOntoQA pipeline
 ./scripts/run_prontoqa_remaining.sh
 
-# Or run full pipeline
-./scripts/run_full_pipeline.sh
+# Full FOLIO pipeline  
+./scripts/run_folio_full.sh
+
+# Evaluate all checkpoints
+./scripts/eval_all_checkpoints.sh
+
+# Run baselines
+./scripts/eval_baselines.sh
+
+# Run ablations
+./scripts/ablation_3_answer_only_dpo.sh
 ```
 
-## Hardware Used
-- 6× NVIDIA B200 (183GB VRAM each)
-- GPUs 2-7 on mlsys-b200 cluster
+---
 
+## HuggingFace Models
+
+| Model | Link |
+|-------|------|
+| PrOntoQA SFT | `Moonlight556/sokrates-Qwen3-32B-prontoqa-sft` |
+| PrOntoQA DPO iter1 | `Moonlight556/sokrates-Qwen3-32B-prontoqa-dpo-iter1` |
+| PrOntoQA DPO iter2 | `Moonlight556/sokrates-Qwen3-32B-prontoqa-dpo-iter2` |
+| PrOntoQA DPO iter3 | `Moonlight556/sokrates-Qwen3-32B-prontoqa-dpo-iter3` |

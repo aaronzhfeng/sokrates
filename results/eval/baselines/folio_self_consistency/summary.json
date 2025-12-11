@@ -1,0 +1,7 @@
+{
+  "method": "self_consistency",
+  "k": 8,
+  "total": 203,
+  "correct": 87,
+  "accuracy": 0.42857142857142855
+}

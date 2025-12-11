@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-12-11T02:28:18.289238",
+  "model": "outputs/dpo/folio_iter3/final",
+  "num_problems": 1594,
+  "samples_per_problem": 1,
+  "total_traces": 1594,
+  "valid_traces": 1438,
+  "correct_traces": 1570,
+  "accuracy": 0.9849435382685069,
+  "step_validity": 0.9814830690098586,
+  "generation_time_seconds": 174.832834,
+  "total_time_seconds": 175.023617,
+  "traces_per_second": 9.117280567562041,
+  "config": {
+    "max_steps": 10,
+    "max_tokens_per_step": 200,
+    "temperature": 0.0,
+    "top_p": 0.95,
+    "num_problems": 0,
+    "samples_per_problem": 1,
+    "seed": 42
+  }
+}

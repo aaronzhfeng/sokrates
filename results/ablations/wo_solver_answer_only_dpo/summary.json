@@ -1,0 +1,10 @@
+{
+  "ablation": "answer_only_dpo",
+  "description": "DPO trained without solver (answer-only preferences)",
+  "total": 1594,
+  "correct": 1523,
+  "accuracy": 0.9554579673776662,
+  "valid_steps": 0,
+  "total_steps": 0,
+  "step_validity": 0
+}

@@ -1,0 +1,20 @@
+\begin{table}[t]
+\centering
+\caption{Main Results on PrOntoQA and FOLIO}
+\label{tab:main_results}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Method} & \multicolumn{2}{c}{\textbf{PrOntoQA}} & \multicolumn{2}{c}{\textbf{FOLIO}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+ & Acc. & Step Val. & Acc. & Step Val. \\
+\midrule
+Base CoT & 44.4 & -- & 42.9 & -- \\
+Self-Consistency (k=8) & 53.8 & -- & 42.9 & -- \\
+\midrule
+SOKRATES SFT & 94.2 & 27.3 & -- & -- \\
+SOKRATES DPO iter1 & 95.9 & 87.8 & 51.7 & 46.7 \\
+SOKRATES DPO iter2 & 97.6 & 98.5 & 51.2 & 46.3 \\
+SOKRATES DPO iter3 & \textbf{98.3} & \textbf{98.7} & \textbf{51.2} & \textbf{47.2} \\
+\bottomrule
+\end{tabular}
+\end{table}

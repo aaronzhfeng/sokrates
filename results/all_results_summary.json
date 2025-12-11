@@ -1,0 +1,100 @@
+{
+  "prontoqa": {
+    "baselines": {
+      "base_cot": {
+        "accuracy": 0.444,
+        "source": "results/eval/baselines/prontoqa_base_cot"
+      },
+      "self_consistency_k8": {
+        "accuracy": 0.538,
+        "source": "results/eval/baselines/prontoqa_self_consistency"
+      }
+    },
+    "sokrates": {
+      "sft": {
+        "accuracy": 0.942,
+        "step_validity": 0.273,
+        "trace_validity": 0.021,
+        "source": "results/eval/checkpoints/prontoqa_sft"
+      },
+      "dpo_iter1": {
+        "accuracy": 0.959,
+        "step_validity": 0.878,
+        "trace_validity": 0.713,
+        "source": "results/eval/checkpoints/prontoqa_dpo_iter1"
+      },
+      "dpo_iter2": {
+        "accuracy": 0.976,
+        "step_validity": 0.985,
+        "trace_validity": 0.92,
+        "source": "results/eval/checkpoints/prontoqa_dpo_iter2"
+      },
+      "dpo_iter3": {
+        "accuracy": 0.983,
+        "step_validity": 0.987,
+        "trace_validity": 0.918,
+        "source": "results/eval/checkpoints/prontoqa_dpo_iter3"
+      }
+    }
+  },
+  "folio": {
+    "baselines": {
+      "base_cot": {
+        "accuracy": 0.429,
+        "source": "results/eval/baselines/folio_base_cot"
+      },
+      "self_consistency_k8": {
+        "accuracy": 0.429,
+        "source": "results/eval/baselines/folio_self_consistency"
+      }
+    },
+    "transfer": {
+      "prontoqa_sft_to_folio": {
+        "accuracy": 0.453,
+        "step_validity": 0.465,
+        "source": "results/eval/transfer/prontoqa_sft_to_folio"
+      },
+      "prontoqa_dpo_iter3_to_folio": {
+        "accuracy": 0.532,
+        "step_validity": 0.483,
+        "source": "results/eval/transfer/prontoqa_dpo_iter3_to_folio"
+      }
+    },
+    "sokrates": {
+      "dpo_iter1": {
+        "accuracy": 0.517,
+        "step_validity": 0.467,
+        "trace_validity": 0.158,
+        "source": "results/eval/checkpoints/folio_dpo_iter1"
+      },
+      "dpo_iter2": {
+        "accuracy": 0.512,
+        "step_validity": 0.463,
+        "trace_validity": 0.133,
+        "source": "results/eval/checkpoints/folio_dpo_iter2"
+      },
+      "dpo_iter3": {
+        "accuracy": 0.512,
+        "step_validity": 0.472,
+        "trace_validity": 0.138,
+        "source": "results/eval/checkpoints/folio_dpo_iter3"
+      }
+    }
+  },
+  "ablations": {
+    "wo_solver_answer_only_dpo": {
+      "accuracy": 0.955,
+      "step_validity": 0.316,
+      "description": "DPO with answer-only preferences (no solver verification)",
+      "comparison": "vs SOKRATES DPO iter1: -0.4% accuracy, -56% step validity",
+      "source": "results/ablations/wo_solver_answer_only_dpo"
+    }
+  },
+  "reverse_transfer": {
+    "folio_dpo_iter3_to_prontoqa": {
+      "accuracy": 0.985,
+      "step_validity": 0.981,
+      "source": "results/eval/transfer/folio_dpo_iter3_to_prontoqa"
+    }
+  }
+}
