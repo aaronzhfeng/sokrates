@@ -424,9 +424,9 @@ CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
 # After iteration 1 (final)
 CUDA_VISIBLE_DEVICES=2 python scripts/evaluate.py \
     --model outputs/dpo/iter1/final \
-    --data data/processed/prontoqa_test.jsonl \
-    --dataset-type prontoqa \
-    --output-dir outputs/evaluation \
+        --data data/processed/prontoqa_test.jsonl \
+        --dataset-type prontoqa \
+        --output-dir outputs/evaluation \
     --dataset-name iter_2_dpo
 ```
 
