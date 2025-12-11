@@ -1,0 +1,147 @@
+% Architecture diagram v2 - Updated layout with improved visual design
+% Note: This file is for inclusion in the main paper, not standalone compilation
+% For standalone compilation, see architecture_v2_standalone.tex
+
+% --- Colors ---
+\definecolor{myblue}{RGB}{218, 232, 252}   % Data/Blue
+\definecolor{mygreen}{RGB}{213, 232, 212}  % Init/Green
+\definecolor{myorange}{RGB}{255, 224, 204} % Loop/Orange
+\definecolor{mypurple}{RGB}{225, 213, 231} % Solver/Purple
+\definecolor{myred}{RGB}{248, 206, 204}    % Output/Red
+\definecolor{mygrey}{RGB}{250, 250, 250}   % Background
+
+% --- Macros (qhat defined in main document) ---
+\newcommand{\pihat}{\pi^*}
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+    scale=0.72, transform shape,
+    node distance=1.2cm and 1.5cm,
+    % Style Definitions
+    base/.style={
+        draw=black!60, 
+        thick, 
+        rounded corners=2pt, 
+        align=center, 
+        font=\small\sffamily,
+        drop shadow={opacity=0.15},
+        inner sep=6pt
+    },
+    data/.style={base, fill=myblue, minimum width=2.2cm, minimum height=1cm},
+    process/.style={base, fill=myorange, minimum width=2.4cm, minimum height=1.1cm},
+    model/.style={base, fill=mygreen, minimum width=2.2cm, minimum height=1cm},
+    output/.style={base, fill=myred, minimum width=2.2cm, minimum height=1cm},
+    solver/.style={base, fill=mypurple, minimum width=2.5cm, minimum height=1cm},
+    arrow/.style={-Latex, thick, color=black!70},
+    line/.style={thick, color=black!70}, % No arrow head
+    dashed_arrow/.style={-Latex, thick, dashed, color=black!70},
+    group_label/.style={font=\bfseries\itshape\color{black!60}, anchor=south} 
+]
+    % --- 1. Initialization Block ---
+    \node[model] (sft) {SFT};
+    \node[model, above=1.5cm of sft] (pi0) {$\pi_0$}; 
+
+    % --- 2. Optionizer ---
+    \node[process, left=2.0cm of $(sft.west)!0.5!(pi0.west)$] (optionizer) {Optionizer};
+
+    % --- 3. Data Input ---
+    \coordinate (data_x) at ($(optionizer.west) - (2.0cm, 0)$);
+    \node[data] (pronto) at (data_x |- pi0) {PrOntoQA};
+    \node[data] (folio) at (data_x |- sft) {FOLIO};
+
+    % --- 4. Micro OaK Loop - Top Row ---
+    \node[process, right=2.0cm of pi0] (gen) {Generate\\Traces};
+    \node[process, right=1.0cm of gen] (verify) {Solver\\Verify};
+    \node[process, right=1.0cm of verify] (update) {Update\\$\qhat$};
+
+    % --- 5. Micro OaK Loop - Bottom Row ---
+    \node[process] (build) at (verify |- sft) {Build\\Preferences};
+    \node[process] (dpo) at (update |- sft) {DPO};
+
+    % --- 6. Solver ---
+    \node[solver, below=1.6cm of build] (z3) {FOL Solver (Z3)};
+
+    % --- 7. Outputs ---
+    \node[output, right=2.0cm of update] (out_q) {Calibrated $\qhat^*$};
+    \node[output] (out_pi) at (out_q |- dpo) {Aligned $\pihat$};
+
+    % --- 8. Group Labels ---
+    \coordinate (label_y) at ($(pi0.north) + (0, 0.4cm)$);
+    \node[group_label] at (pronto |- label_y) {Data};
+    \node[group_label] at (pi0 |- label_y) {Init};
+    \node[group_label] at (out_q |- label_y) {Output};
+
+    % --- Background Box ---
+    \begin{scope}[on background layer]
+        \coordinate (loop_top) at ($(update.north) + (0, 0.9cm)$);
+        \coordinate (loop_bottom) at ($(dpo.south) - (0, 0.9cm)$);
+        
+        \node[
+            draw=black!40, 
+            thick, 
+            dashed, 
+            fill=mygrey, 
+            rounded corners=10pt, 
+            fit=(gen) (update) (loop_top) (loop_bottom),
+            inner sep=0.5cm,
+            label={[anchor=south, yshift=0.2cm]north:\textbf{\textit{Micro OaK Loop} (repeat $N=2$ iterations)}}
+        ] (loop_box) {};
+    \end{scope}
+
+    % --- Connections ---
+    % 1. Data -> Optionizer
+    \coordinate (merge_point) at ($(pronto.east)!0.5!(optionizer.west)$);
+    \draw[line] (pronto.east) -- (merge_point |- pronto.east);
+    \draw[line] (folio.east) -- (merge_point |- folio.east);
+    \draw[line] (merge_point |- pronto.east) -- (merge_point |- folio.east);
+    \draw[arrow] (merge_point |- optionizer.west) -- (optionizer.west);
+
+    % 2. Optionizer -> SFT
+    \draw[arrow] (optionizer.south) |- (sft.west) node[pos=0.75, above, font=\scriptsize, align=center] {proof $\to$ \\ Thought/Action};
+    
+    % 3. SFT -> Pi0
+    \draw[arrow] (sft.north) -- (pi0.south);
+
+    % 4. Pi0 -> Generate
+    \draw[arrow] (pi0.east) -- (gen.west);
+
+    % 5. Loop Internal Flow
+    \draw[arrow] (gen.east) -- (verify.west);
+    \draw[arrow] (verify.east) -- (update.west);
+    \draw[arrow] (verify.south) -- node[midway, right, font=\scriptsize] {Valid/Invalid} (build.north);
+    \draw[arrow] (build.east) -- (dpo.west);
+
+    % 6. Solver Connection
+    \draw[arrow] (z3.north) -- (build.south);
+
+    % 7. Output Connections
+    \draw[arrow] (update.east) -- (out_q.west);
+    \draw[arrow] (dpo.east) -- (out_pi.west);
+
+    % --- Feedback Loops ---
+    
+    % DPO -> Generate (Bottom loop)
+    \path (dpo.south) -- ++(0,-0.7) coordinate (bottom_bus);
+    \draw[dashed_arrow, rounded corners] 
+        (dpo.south) 
+        -- (dpo.south |- bottom_bus) 
+        -- node[pos=0.30, below, yshift=-2pt, font=\scriptsize] {Update Policy $\pi$} (gen.south |- bottom_bus) 
+        -- (gen.south);
+
+    % Update -> Generate (Top loop)
+    \path (update.north) -- ++(0,0.7) coordinate (top_bus);
+    \draw[dashed_arrow, rounded corners] 
+        (update.north) 
+        -- (update.north |- top_bus) 
+        -- (gen.north |- top_bus) 
+        -- (gen.north);
+
+    % Text Annotations
+    \node[font=\scriptsize, text=black!60, align=center] at ($(sft.south)+(0,-0.3)$) {format learning};
+
+\end{tikzpicture}
+\caption{The \sokrates{} architecture. Data flows through an optionizer to create Thought/Action training pairs for SFT, producing initial policy $\pi_0$. The Micro OaK Loop iteratively generates traces, verifies them with a FOL solver, updates the option-success predictor $\qhat$, builds preferences from valid/invalid traces, and applies DPO to align the policy. Dashed arrows show feedback loops within the iterative training.}
+\label{fig:architecture}
+\end{figure*}
+
