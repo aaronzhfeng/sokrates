@@ -192,26 +192,186 @@ sokrates/
 └── README.md
 ```
 
+## Methodology
+
+### Pipeline Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         SOKRATES Pipeline                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────────────────────┐  │
+│  │  Raw     │───▶│ Optionize    │───▶│  SFT Training                │  │
+│  │  Dataset │    │ Proofs       │    │  (Learn Thought/Action)      │  │
+│  └──────────┘    └──────────────┘    └──────────────────────────────┘  │
+│                                                    │                    │
+│                                                    ▼                    │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                     OaK-DPO Loop (×3 iterations)                 │  │
+│  │  ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌─────────┐  │  │
+│  │  │ Generate   │──▶│ Verify w/  │──▶│ Build DPO  │──▶│ Train   │  │  │
+│  │  │ Traces     │   │ Solver     │   │ Pairs      │   │ DPO     │  │  │
+│  │  └────────────┘   └────────────┘   └────────────┘   └─────────┘  │  │
+│  │        ▲                                                  │      │  │
+│  │        └──────────────────────────────────────────────────┘      │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                                                    │                    │
+│                                                    ▼                    │
+│                                           ┌──────────────┐             │
+│                                           │  Evaluation  │             │
+│                                           └──────────────┘             │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step 1: Optionization
+
+We transform free-form natural language proofs into structured **Thought/Action** sequences:
+
+**Original proof (PrOntoQA):**
+> "Wren is a jompus. Each jompus is nervous. Therefore, Wren is nervous."
+
+**Optionized format:**
+```
+Premises:
+  [0] Wren is a jompus.
+  [1] Each jompus is nervous.
+
+Conclusion to evaluate: Wren is nervous.
+
+Determine if the conclusion is TRUE, FALSE, or UNKNOWN.
+
+Reasoning:
+Thought: Since Wren is a jompus (premise 0) and each jompus is nervous (premise 1), 
+we can conclude that Wren is nervous.
+Action: <Option type="MODUS_PONENS" args="[0, 1]" />
+Thought: This matches our conclusion exactly, so it must be TRUE.
+Action: <Option type="CONCLUDE" args="[0]" />
+```
+
+### Step 2: SFT Training
+
+The base LLM is fine-tuned on optionized traces to learn:
+- The structured Thought/Action output format
+- How to reference premises by index
+- When to apply different inference rules
+
+**SFT Hyperparameters:**
+| Parameter | Value |
+|-----------|-------|
+| Base Model | Qwen/Qwen3-8B |
+| LoRA Rank | 64 |
+| LoRA Alpha | 128 |
+| Learning Rate | 2e-5 |
+| Batch Size | 4 (gradient accumulation: 4) |
+| Epochs | 3 |
+| Max Length | 2048 |
+
+### Step 3: OaK-DPO Loop
+
+Each iteration:
+
+1. **Generate Traces**: Sample 2 traces per problem with temperature=0.5
+2. **Verify with Solver**: Check each reasoning step for logical validity
+3. **Build Preference Pairs**: Pair valid traces (chosen) with invalid traces (rejected)
+4. **Train DPO**: Update model to prefer valid reasoning
+
+**Trace Generation Hyperparameters:**
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Temperature | 0.5 | Balance diversity vs quality |
+| Max Steps | 15 | Maximum reasoning steps |
+| Samples per Problem | 2 | Traces generated per problem |
+| vLLM Tensor Parallel | 1 | Per-GPU parallelism |
+| Data Parallel GPUs | 6 | Total parallelism |
+
+**DPO Hyperparameters:**
+| Parameter | Value |
+|-----------|-------|
+| Beta | 0.1 |
+| Learning Rate | 5e-7 |
+| Batch Size | 4 |
+| Epochs | 1 |
+| Max Length | 2048 |
+
+### Step 4: Solver Verification
+
+The solver validates each reasoning step by checking:
+- **Premise indices**: Are the referenced premises valid?
+- **Rule application**: Is the inference rule correctly applied?
+- **Derivation**: Does the conclusion follow from the premises?
+
+For PrOntoQA, we use a pattern-matching solver that understands the syllogistic structure.
+For FOLIO, we use Z3 SMT solver for first-order logic verification.
+
 ## Key Concepts
 
 ### Options
 
 Discrete inference-rule macros that form the reasoning vocabulary:
 
-| Option | Description | Example |
-|--------|-------------|---------|
-| `MODUS_PONENS` | From P and P→Q, derive Q | "Socrates is a man" + "All men are mortal" → "Socrates is mortal" |
-| `UNIV_INSTANTIATION` | From ∀x.P(x), derive P(c) | "All cats are mammals" → "Felix is a mammal" |
-| `AND_ELIM` | From P∧Q, derive P or Q | "It's cold and rainy" → "It's cold" |
-| `CONCLUDE` | Terminal step | Output TRUE/FALSE/UNKNOWN |
+| Option | Description | Args | Example |
+|--------|-------------|------|---------|
+| `MODUS_PONENS` | From P and P→Q, derive Q | `[p_idx, rule_idx]` | "Socrates is a man" + "All men are mortal" → "Socrates is mortal" |
+| `MODUS_TOLLENS` | From ¬Q and P→Q, derive ¬P | `[neg_q_idx, rule_idx]` | "Not mortal" + "Men are mortal" → "Not a man" |
+| `UNIV_INSTANTIATION` | From ∀x.P(x), derive P(c) | `[forall_idx]` | "All cats are mammals" → "Felix is a mammal" |
+| `AND_ELIM` | From P∧Q, derive P or Q | `[conj_idx]` | "It's cold and rainy" → "It's cold" |
+| `CONCLUDE` | Terminal step | `[0/1/2]` | 0=TRUE, 1=FALSE, 2=UNKNOWN |
 
 ### Thought/Action Format
 
-Each proof step consists of:
+Each proof step consists of two parts:
+
 ```
-Thought: Since we know Socrates is a man (premise 0) and all men are mortal (premise 1), 
-we can apply modus ponens.
+Thought: <natural language explanation of reasoning>
+Action: <Option type="RULE_NAME" args="[premise_indices]" />
+```
+
+**Complete Example:**
+```
+Premises:
+  [0] Alex is a tumpus.
+  [1] Every tumpus is small.
+  [2] Every tumpus is a wumpus.
+  [3] Every wumpus is floral.
+
+Conclusion to evaluate: Alex is floral.
+
+Reasoning:
+Thought: Since Alex is a tumpus (premise 0) and every tumpus is a wumpus (premise 2), 
+we can derive that Alex is a wumpus.
+Action: <Option type="MODUS_PONENS" args="[0, 2]" />
+Thought: Now that we know Alex is a wumpus (derived) and every wumpus is floral (premise 3), 
+we can conclude Alex is floral.
+Action: <Option type="MODUS_PONENS" args="[4, 3]" />
+Thought: This matches our target conclusion, so the answer is TRUE.
+Action: <Option type="CONCLUDE" args="[0]" />
+```
+
+### DPO Preference Pairs
+
+We construct preference pairs for DPO training:
+
+| Criteria | Chosen (Preferred) | Rejected |
+|----------|-------------------|----------|
+| Validity | Solver-verified valid | Contains invalid steps |
+| Correctness | Reaches correct answer | Wrong final answer |
+| Efficiency | Fewer steps | More steps (same answer) |
+
+**Example Pair:**
+
+*Chosen* (valid trace):
+```
+Thought: Using premise 0 and 1...
 Action: <Option type="MODUS_PONENS" args="[0, 1]" />
+Action: <Option type="CONCLUDE" args="[0]" />
+```
+
+*Rejected* (invalid trace):
+```
+Thought: Using premise 0 and 3...
+Action: <Option type="MODUS_PONENS" args="[0, 3]" />  # Invalid: premises don't chain
+Action: <Option type="CONCLUDE" args="[1]" />  # Wrong answer
 ```
 
 ### Knowledge (q̂_φ)
@@ -228,31 +388,85 @@ The iterative training cycle:
 5. **DPO** - Update policy to prefer valid traces
 6. **Repeat**
 
+## Evaluation Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Accuracy** | % of problems with correct final answer (TRUE/FALSE/UNKNOWN) |
+| **Step Validity** | % of reasoning steps that are logically valid per solver |
+| **Valid Trace %** | % of complete traces with all steps valid |
+| **Avg Steps** | Average number of reasoning steps per problem |
+
+### Results Breakdown
+
+| Iteration | Accuracy | Step Validity | Valid Traces | Avg Steps |
+|-----------|----------|---------------|--------------|-----------|
+| SFT | 93.3% | 11.3% | 3.2% | 2.8 |
+| DPO iter1 | 96.8% | 44.7% | 28.5% | 3.1 |
+| DPO iter2 | 98.1% | 83.5% | 71.2% | 3.0 |
+| DPO iter3 | 98.2% | 91.8% | 85.4% | 2.9 |
+
+**Key Insight**: While accuracy plateaus after iter2, step validity continues improving significantly, indicating the model learns more rigorous reasoning.
+
 ## Configuration
 
-### Model Settings (`configs/model.yaml`)
+### Model Settings
 
 ```yaml
 model:
-  name: "meta-llama/Llama-3.1-8B-Instruct"
-  torch_dtype: "bfloat16"
+  name: "Qwen/Qwen3-8B"           # Base model
+  torch_dtype: "bfloat16"          # Mixed precision
 
 peft:
   enabled: true
-  r: 64
-  lora_alpha: 128
+  r: 64                            # LoRA rank
+  lora_alpha: 128                  # LoRA scaling
+  target_modules:                  # Modules to adapt
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
 ```
 
-### Training Settings (`configs/training.yaml`)
+### SFT Training Settings
 
 ```yaml
-oak_loop:
-  num_iterations: 3
-  samples_per_problem: 8
+sft:
+  learning_rate: 2.0e-5
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4   # Effective batch: 16
+  max_seq_length: 2048
+  warmup_ratio: 0.03
+  lr_scheduler_type: "cosine"
+  gradient_checkpointing: true
+```
 
+### DPO Training Settings
+
+```yaml
 dpo:
-  beta: 0.1
-  learning_rate: 5.0e-6
+  beta: 0.1                        # KL penalty weight
+  learning_rate: 5.0e-7            # Lower than SFT
+  num_train_epochs: 1
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  max_length: 2048
+  max_prompt_length: 1024
+```
+
+### Trace Generation Settings
+
+```yaml
+generation:
+  temperature: 0.5                 # Sampling temperature
+  max_steps: 15                    # Max reasoning steps
+  samples_per_problem: 2           # Traces per problem
+  tensor_parallel_size: 1          # GPUs per model
+  data_parallel_gpus: 6            # Parallel processes
 ```
 
 ## Hardware Requirements
