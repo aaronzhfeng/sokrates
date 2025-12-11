@@ -1,0 +1,30 @@
+% tables/hyperparams.tex
+% Hyperparameter search results for trace generation
+
+\begin{table}[t]
+\centering
+\caption{Hyperparameter search for trace generation (SFT model, 50 problems $\times$ $K$ samples). Higher temperature increases diversity but reduces accuracy. Default: $\tau{=}0.5$, $T_{\max}{=}10$, $K{=}2$.}
+\label{tab:hyperparams}
+\begin{tabular}{lccccc}
+\hline
+\textbf{Config} & \textbf{$\tau$} & \textbf{$T_{\max}$} & \textbf{Acc.} & \textbf{Step} & \textbf{Div.} \\
+\hline
+\multicolumn{6}{l}{\textit{Temperature ($K{=}2$, $T_{\max}{=}10$)}} \\
+Greedy & 0.0 & 10 & 95.0 & 27.2 & 6 \\
+Low & 0.3 & 10 & 96.0 & 27.2 & 58 \\
+Medium & 0.5 & 10 & 95.0 & 36.2 & 78 \\
+High & 0.7 & 10 & 87.0 & 35.4 & 82 \\
+Very high & 1.0 & 10 & 80.0 & 50.1 & 86 \\
+\hline
+\multicolumn{6}{l}{\textit{Max Steps ($K{=}2$, $\tau{=}0.5$)}} \\
+Short & 0.5 & 5 & 90.0 & 34.3 & 74 \\
+Default & 0.5 & 10 & 95.0 & 36.2 & 78 \\
+Long & 0.5 & 15 & 93.0 & 41.0 & 74 \\
+\hline
+\multicolumn{6}{l}{\textit{Samples/Problem ($\tau{=}0.5$, $T_{\max}{=}10$)}} \\
+$K{=}2$ & 0.5 & 10 & 95.0 & 36.2 & 78 \\
+$K{=}4$ & 0.5 & 10 & 96.0 & 35.3 & 94 \\
+\hline
+\end{tabular}
+\end{table}
+

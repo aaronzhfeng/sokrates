@@ -356,6 +356,14 @@ Qwen3-8B \cite{qwen2024qwen2} with LoRA \cite{hu2022lora} ($r{=}64$, $\alpha{=}1
     \item \textbf{\oak{} iterations}: $N{=}2$, $K{=}2$ samples/problem
 \end{itemize}
 
+\paragraph{Generation Hyperparameters.}
+Table~\ref{tab:hyperparams} reports a hyperparameter search over temperature ($\tau$), maximum steps ($T_{\max}$), and samples per problem ($K$).
+We find that moderate temperature ($\tau{=}0.5$) balances accuracy and diversity for preference pair construction.
+Higher temperatures increase trace diversity but reduce accuracy; greedy decoding ($\tau{=}0$) produces near-identical traces, limiting preference signal.
+
+% Hyperparameter search table (modular)
+\input{tables/hyperparams}
+
 \paragraph{Distributed Training.}
 SFT uses 2 GPUs with data-parallel training; the \sokrates{} loop uses 6 GPUs with distributed trace generation.
 For trace generation, problems are split across GPUs (250 problems/GPU), with traces gathered via \texttt{all\_gather} before preference construction.
@@ -388,10 +396,14 @@ For trace generation, problems are split across GPUs (250 problems/GPU), with tr
 \subsection{Main Results}
 
 Table~\ref{tab:main_results} presents results on PrOntoQA.
-% Results narrative to be added after experiments:
-% - Sokrates improves accuracy by X% over SFT
-% - Step validity increases from Y% to Z% across iterations
-% - Trace validity shows largest gains (W% improvement)
+Without any training, Qwen3-8B achieves only 44.4\% accuracy with base CoT, improving to 53.8\% with self-consistency voting.
+
+SFT on optionized traces dramatically improves accuracy to 94.2\%, demonstrating that the model can learn the Thought/Action format effectively.
+However, step validity remains low (27.3\%) and trace validity is near zero (2.1\%), indicating that while SFT teaches format, it does not guarantee logically valid reasoning.
+
+\sokrates{} addresses this gap through iterative preference learning.
+After one \oak{} iteration, step validity jumps from 27.3\% to 87.8\% and trace validity from 2.1\% to 71.3\%---a \textbf{33$\times$ improvement} in fully valid traces.
+After two iterations, \sokrates{} achieves 97.6\% accuracy with 98.5\% step validity and 92.0\% trace validity, representing a near-complete alignment between answer correctness and reasoning validity.
 
 \subsection{Calibration Analysis}
 
@@ -408,10 +420,15 @@ We compute \textbf{Brier score} (mean squared error between $\qhat$ predictions 
 
 \subsection{Transfer to FOLIO}
 
-We evaluate zero-shot transfer of PrOntoQA-trained \sokrates{} to FOLIO.
-% Pilot results to be added:
-% - Brief table with FOLIO accuracy
-% - Discussion of transfer challenges (more complex FOL, longer proofs)
+We evaluate zero-shot transfer of PrOntoQA-trained models to FOLIO (Table~\ref{tab:transfer}).
+FOLIO presents significantly harder challenges: natural language premises, more complex FOL structures, and longer proof chains.
+
+% Transfer table (modular)
+\input{tables/transfer}
+
+Despite no FOLIO-specific training, \sokrates{} improves accuracy from 42.9\% (base CoT) to 53.2\%, outperforming SFT transfer (45.3\%) by 7.9 percentage points.
+Step validity also improves slightly (48.3\% vs 46.5\%), though both remain lower than on PrOntoQA, reflecting FOLIO's increased difficulty.
+These results suggest that \sokrates{}'s learned option policies transfer across domains, though domain-specific fine-tuning would likely yield further gains.
 
 %============================================================================
 \section{Ablation Studies}
@@ -420,19 +437,18 @@ We evaluate zero-shot transfer of PrOntoQA-trained \sokrates{} to FOLIO.
 % Ablation results table (modular)
 \input{tables/ablations}
 
-Table~\ref{tab:ablations} isolates the contribution of each component:
+Table~\ref{tab:ablations} isolates the contribution of solver verification and iteration count.
 
-\paragraph{Constrained Decoding.}
-Removing grammar constraints increases syntax errors but step validity (for parseable steps) remains similar, confirming the separation of syntax vs.\ semantic errors.
-
-\paragraph{Option Head ($\qhat$).}
-Without the option head, \dpo{} still improves the policy, but we lose the explicit knowledge representation and calibration benefits.
+\paragraph{Solver Verification.}
+The ``w/o solver'' ablation trains \dpo{} using only answer correctness (no step-level verification).
+This achieves 95.5\% accuracy---higher than SFT---but trace validity remains at 2.2\%, nearly identical to SFT's 2.1\%.
+This demonstrates that \textbf{solver feedback is essential for learning valid reasoning}, not just correct answers.
+Without step-level verification, \dpo{} learns to produce correct final answers through potentially invalid reasoning chains.
 
 \paragraph{\oak{} Iterations.}
-A single \dpo{} pass yields smaller gains than the full 2-iteration loop, demonstrating the value of iterative refinement.
-
-\paragraph{Optionization.}
-\dpo{} on raw CoT (not optionized) improves accuracy but shows weaker trace validity gains, confirming that structured option representation is key to learning valid reasoning.
+A single iteration yields the largest gains: trace validity jumps from 2.1\% to 71.3\%.
+Two iterations push trace validity to 92.0\%.
+Three iterations show marginal gains (98.3\% accuracy, 91.8\% trace validity), suggesting diminishing returns.
 
 %============================================================================
 \section{Conclusion}

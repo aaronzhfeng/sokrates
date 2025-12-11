@@ -3,30 +3,21 @@
 
 \begin{table}[t]
 \centering
-\caption{Ablations on PrOntoQA test set. Each row removes one component from \sokrates{} (full).}
+\caption{Ablations on PrOntoQA. Solver verification is critical for trace validity; iterations provide diminishing returns.}
 \label{tab:ablations}
 \begin{tabular}{lccc}
 \hline
 \textbf{Configuration} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} \\
 \hline
-\sokrates{} (full) & -- & -- & -- \\
-\hline
-\multicolumn{4}{l}{\textit{Representation}} \\
-\quad w/o optionization (raw CoT) & -- & -- & -- \\
-\quad w/o Thought (Action only) & -- & -- & -- \\
-\quad w/o constrained decoding & -- & -- & -- \\
+\sokrates{} (2 iterations) & \textbf{97.6} & \textbf{98.5} & \textbf{92.0} \\
 \hline
 \multicolumn{4}{l}{\textit{Knowledge Components}} \\
-\quad w/o option head ($\qhat$) & -- & -- & -- \\
-\quad w/o solver verification & -- & -- & -- \\
+\quad w/o solver (answer-only) & 95.5 & 31.6 & 2.2 \\
 \hline
 \multicolumn{4}{l}{\textit{Training Iterations}} \\
-\quad 1 iteration only & -- & -- & -- \\
-\quad 3 iterations & -- & -- & -- \\
-\hline
-\multicolumn{4}{l}{\textit{Sampling}} \\
-\quad $K{=}4$ samples/problem & -- & -- & -- \\
-\quad $K{=}8$ samples/problem & -- & -- & -- \\
+\quad SFT only (0 iter) & 94.2 & 27.3 & 2.1 \\
+\quad 1 iteration & 95.9 & 87.8 & 71.3 \\
+\quad 3 iterations & 98.3 & 98.7 & 91.8 \\
 \hline
 \end{tabular}
 \end{table}

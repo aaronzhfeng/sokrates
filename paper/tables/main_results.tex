@@ -3,29 +3,20 @@
 
 \begin{table}[t]
 \centering
-\caption{Main results on PrOntoQA test set. \sokrates{} improves across all metrics with each \oak{} iteration.}
+\caption{Main results on PrOntoQA test set ($n{=}1594$). \sokrates{} improves across all metrics with each \oak{} iteration. Step = step validity (\%), Trace = trace validity (\%).}
 \label{tab:main_results}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
 \hline
-\textbf{Model} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} & \textbf{Brier} \\
+\textbf{Model} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} \\
 \hline
-\multicolumn{5}{l}{\textit{No Training}} \\
-Base CoT & -- & -- & -- & -- \\
-Self-Consistency ($k{=}8$) & -- & -- & -- & -- \\
+\multicolumn{4}{l}{\textit{No Training (Qwen3-8B)}} \\
+Base CoT & 44.4 & --- & --- \\
+Self-Consistency ($k{=}8$) & 53.8 & --- & --- \\
 \hline
-\multicolumn{5}{l}{\textit{Prior Methods}} \\
-LoGiPT & -- & -- & -- & -- \\
-Logic-LM & -- & -- & -- & -- \\
-\hline
-\multicolumn{5}{l}{\textit{Preference Baselines}} \\
-Answer-only \dpo{} & -- & -- & -- & -- \\
-CoT-\dpo{} & -- & -- & -- & -- \\
-VeriCoT & -- & -- & -- & -- \\
-\hline
-\multicolumn{5}{l}{\textit{Ours}} \\
-SFT & -- & -- & -- & -- \\
-\sokrates{} (iter 1) & -- & -- & -- & -- \\
-\sokrates{} (iter 2) & -- & -- & -- & -- \\
+\multicolumn{4}{l}{\textit{Ours}} \\
+SFT & 94.2 & 27.3 & 2.1 \\
+\sokrates{} (iter 1) & 95.9 & 87.8 & 71.3 \\
+\sokrates{} (iter 2) & \textbf{97.6} & \textbf{98.5} & \textbf{92.0} \\
 \hline
 \end{tabular}
 \end{table}

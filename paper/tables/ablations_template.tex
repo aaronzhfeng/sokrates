@@ -1,0 +1,34 @@
+% tables/ablations_template.tex
+% REFERENCE TEMPLATE - Original ablation structure with all planned rows
+% Copy and modify this when running additional ablation experiments
+
+\begin{table}[t]
+\centering
+\caption{Ablations on PrOntoQA test set. Each row removes one component from \sokrates{} (full).}
+\label{tab:ablations}
+\begin{tabular}{lccc}
+\hline
+\textbf{Configuration} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} \\
+\hline
+\sokrates{} (full) & -- & -- & -- \\
+\hline
+\multicolumn{4}{l}{\textit{Representation}} \\
+\quad w/o optionization (raw CoT) & -- & -- & -- \\
+\quad w/o Thought (Action only) & -- & -- & -- \\
+\quad w/o constrained decoding & -- & -- & -- \\
+\hline
+\multicolumn{4}{l}{\textit{Knowledge Components}} \\
+\quad w/o option head ($\qhat$) & -- & -- & -- \\
+\quad w/o solver verification & -- & -- & -- \\
+\hline
+\multicolumn{4}{l}{\textit{Training Iterations}} \\
+\quad 1 iteration only & -- & -- & -- \\
+\quad 3 iterations & -- & -- & -- \\
+\hline
+\multicolumn{4}{l}{\textit{Sampling}} \\
+\quad $K{=}4$ samples/problem & -- & -- & -- \\
+\quad $K{=}8$ samples/problem & -- & -- & -- \\
+\hline
+\end{tabular}
+\end{table}
+
