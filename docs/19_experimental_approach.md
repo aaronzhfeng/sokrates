@@ -102,20 +102,33 @@ Then we test transfer to FOLIO (human-curated Wikipedia examples) to validate ge
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  FOLIO Evaluation/Training                                      │
+│  FOLIO Transfer Strategy                                        │
 ├─────────────────────────────────────────────────────────────────┤
-│  Option A: Zero-shot transfer                                   │
-│    - Apply PrOntoQA-trained model directly to FOLIO             │
-│    - Tests generalization of optionized reasoning               │
+│  Starting point: PrOntoQA DPO iter3 checkpoint (NOT SFT!)       │
 │                                                                 │
-│  Option B: FOLIO DPO (no SFT)                                   │
-│    - Generate traces on FOLIO                                   │
-│    - Verify with Z3 solver                                      │
-│    - DPO training (builds on PrOntoQA foundation)               │
+│  Why DPO iter3, not SFT?                                        │
+│    - DPO teaches GENERAL logical validity, not PrOntoQA tricks  │
+│    - 91.8% valid steps → better quality traces for FOLIO DPO    │
+│    - Faster convergence (model already reasons well)            │
 │                                                                 │
-│  Key: Skip SFT on FOLIO because format is already learned       │
+│  FOLIO Pipeline:                                                │
+│    1. Generate traces on FOLIO (using DPO iter3 model)          │
+│    2. Verify with Z3 solver                                     │
+│    3. Build preference pairs                                    │
+│    4. DPO training on FOLIO                                     │
+│                                                                 │
+│  Key: Skip SFT entirely—format + validity already learned       │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Why NOT start from SFT for FOLIO?**
+
+| Starting Point | Valid Steps | Problem |
+|----------------|-------------|---------|
+| SFT | 11.3% | Most traces invalid → poor DPO pairs |
+| DPO iter3 | 91.8% | Good mix of valid/invalid → quality DPO pairs |
+
+The SFT model produces ~89% invalid traces. For DPO to work, you need a good distribution of both valid AND invalid traces. Starting from DPO iter3 gives you that balance.
 
 ---
 
@@ -308,6 +321,16 @@ results/
 - FOLIO uses more complex FOL (quantifiers, negation, etc.)
 - FOLIO premises are real-world text (less structured)
 - We expect ~70-80% transfer without FOLIO-specific DPO
+
+### Q: Should I use SFT or DPO iter3 as starting point for FOLIO?
+
+**A:** Use **DPO iter3**, not SFT. Reasons:
+1. DPO teaches general logical validity, not PrOntoQA-specific patterns
+2. DPO iter3 produces 91.8% valid steps vs SFT's 11.3%
+3. Better traces = better preference pairs for FOLIO DPO
+4. The format is identical—no need to re-learn it
+
+Think of it as transfer learning: always start from your best model, not an intermediate checkpoint.
 
 ### Q: Why use Qwen3-8B instead of Llama?
 
