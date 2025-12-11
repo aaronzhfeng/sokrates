@@ -31,8 +31,9 @@ TEMP=0.5
 MAX_STEPS=15
 SAMPLES=2
 
-# FOLIO is smaller, use 2 GPUs for trace gen (500 problems each)
-PPG=$((NUM_PROBLEMS / 2 + 1))
+# Use 6 GPUs for trace gen (~167 problems each)
+NUM_GPUS=6
+PPG=$((NUM_PROBLEMS / NUM_GPUS + 1))
 
 # Starting model: PrOntoQA DPO iter3 (NOT SFT!)
 PRONTOQA_DPO_MODEL="outputs/dpo/iter3/final"
@@ -75,20 +76,18 @@ echo "FOLIO DPO ITERATION 1"
 echo "============================================================"
 echo "Starting from: PrOntoQA DPO iter3"
 
-echo "[Iter1] Generating traces (2 GPUs)..."
+echo "[Iter1] Generating traces (6 GPUs)..."
 mkdir -p outputs/traces/folio_iter0
 
-CUDA_VISIBLE_DEVICES=2 python scripts/generate_traces_vllm.py \
-    --model $MODEL_START --data $DATA \
-    --output outputs/traces/folio_iter0/gpu2 \
-    --num-problems $PPG --start-idx 0 \
-    --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
-
-CUDA_VISIBLE_DEVICES=3 python scripts/generate_traces_vllm.py \
-    --model $MODEL_START --data $DATA \
-    --output outputs/traces/folio_iter0/gpu3 \
-    --num-problems $PPG --start-idx $PPG \
-    --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
+for i in 0 1 2 3 4 5; do
+    GPU_ID=$((i + 2))
+    START=$((i * PPG))
+    CUDA_VISIBLE_DEVICES=$GPU_ID python scripts/generate_traces_vllm.py \
+        --model $MODEL_START --data $DATA \
+        --output outputs/traces/folio_iter0/gpu${GPU_ID} \
+        --num-problems $PPG --start-idx $START \
+        --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
+done
 
 wait
 cat outputs/traces/folio_iter0/gpu*/traces.jsonl > outputs/traces/folio_iter0/traces.jsonl
@@ -117,20 +116,18 @@ echo "============================================================"
 MODEL_ITER1=$(get_model_path "outputs/dpo/folio_iter1/final")
 echo "  Using: $MODEL_ITER1"
 
-echo "[Iter2] Generating traces..."
+echo "[Iter2] Generating traces (6 GPUs)..."
 mkdir -p outputs/traces/folio_iter1
 
-CUDA_VISIBLE_DEVICES=2 python scripts/generate_traces_vllm.py \
-    --model $MODEL_ITER1 --data $DATA \
-    --output outputs/traces/folio_iter1/gpu2 \
-    --num-problems $PPG --start-idx 0 \
-    --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
-
-CUDA_VISIBLE_DEVICES=3 python scripts/generate_traces_vllm.py \
-    --model $MODEL_ITER1 --data $DATA \
-    --output outputs/traces/folio_iter1/gpu3 \
-    --num-problems $PPG --start-idx $PPG \
-    --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
+for i in 0 1 2 3 4 5; do
+    GPU_ID=$((i + 2))
+    START=$((i * PPG))
+    CUDA_VISIBLE_DEVICES=$GPU_ID python scripts/generate_traces_vllm.py \
+        --model $MODEL_ITER1 --data $DATA \
+        --output outputs/traces/folio_iter1/gpu${GPU_ID} \
+        --num-problems $PPG --start-idx $START \
+        --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
+done
 
 wait
 cat outputs/traces/folio_iter1/gpu*/traces.jsonl > outputs/traces/folio_iter1/traces.jsonl
@@ -159,20 +156,18 @@ echo "============================================================"
 MODEL_ITER2=$(get_model_path "outputs/dpo/folio_iter2/final")
 echo "  Using: $MODEL_ITER2"
 
-echo "[Iter3] Generating traces..."
+echo "[Iter3] Generating traces (6 GPUs)..."
 mkdir -p outputs/traces/folio_iter2
 
-CUDA_VISIBLE_DEVICES=2 python scripts/generate_traces_vllm.py \
-    --model $MODEL_ITER2 --data $DATA \
-    --output outputs/traces/folio_iter2/gpu2 \
-    --num-problems $PPG --start-idx 0 \
-    --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
-
-CUDA_VISIBLE_DEVICES=3 python scripts/generate_traces_vllm.py \
-    --model $MODEL_ITER2 --data $DATA \
-    --output outputs/traces/folio_iter2/gpu3 \
-    --num-problems $PPG --start-idx $PPG \
-    --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
+for i in 0 1 2 3 4 5; do
+    GPU_ID=$((i + 2))
+    START=$((i * PPG))
+    CUDA_VISIBLE_DEVICES=$GPU_ID python scripts/generate_traces_vllm.py \
+        --model $MODEL_ITER2 --data $DATA \
+        --output outputs/traces/folio_iter2/gpu${GPU_ID} \
+        --num-problems $PPG --start-idx $START \
+        --samples-per-problem $SAMPLES --temperature $TEMP --max-steps $MAX_STEPS &
+done
 
 wait
 cat outputs/traces/folio_iter2/gpu*/traces.jsonl > outputs/traces/folio_iter2/traces.jsonl

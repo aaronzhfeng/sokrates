@@ -58,14 +58,32 @@ class VLLMGenerationConfig:
     seed: int = 42
 
 
-def build_prompt(state: LogicalState) -> str:
+def build_prompt(state: LogicalState, raw_cot: bool = False) -> str:
     """
     Build the prompt for generation.
+    
+    Args:
+        state: The logical state containing premises and conclusion
+        raw_cot: If True, use raw chain-of-thought format (no Option tags)
     
     Structure:
     1. System instructions (helps guide the model)
     2. Problem in EXACT training format (triggers learned behavior)
     """
+    if raw_cot:
+        # Raw CoT format - matches ablation training data
+        # No instructions, just problem format to match training exactly
+        problem_lines = ["Premises:"]
+        for i, premise in enumerate(state.nl_premises):
+            problem_lines.append(f"  [{i}] {premise}")
+        
+        problem_lines.append(f"\nConclusion to evaluate: {state.target_conclusion}")
+        problem_lines.append("\nDetermine if the conclusion is TRUE, FALSE, or UNKNOWN.")
+        problem_lines.append("\nReasoning:")
+        
+        return "\n".join(problem_lines)
+    
+    # Optionized format (default)
     # System instructions to guide the model
     instructions = """You are a logical reasoning assistant. Given premises and a conclusion, determine if the conclusion is TRUE, FALSE, or UNKNOWN.
 
@@ -139,8 +157,18 @@ def load_problems(data_path: str, num_problems: int = 0, start_idx: int = 0, see
     return problems
 
 
-def parse_trace_output(output_text: str, problem: LogicalState) -> dict:
-    """Parse vLLM output into trace dict format."""
+def parse_trace_output(output_text: str, problem: LogicalState, raw_cot: bool = False) -> dict:
+    """Parse vLLM output into trace dict format.
+    
+    Args:
+        output_text: Generated text from the model
+        problem: The logical problem being solved
+        raw_cot: If True, parse raw CoT format (natural language steps)
+    """
+    if raw_cot:
+        return parse_raw_cot_output(output_text, problem)
+    
+    # Optionized format parsing
     steps = []
     lines = output_text.strip().split('\n')
     
@@ -201,6 +229,70 @@ def parse_trace_output(output_text: str, problem: LogicalState) -> dict:
     }
 
 
+def parse_raw_cot_output(output_text: str, problem: LogicalState) -> dict:
+    """Parse raw chain-of-thought output (natural language, no Option tags).
+    
+    Expected format:
+        Step 1: Since X (premise 0) and Y (premise 1), we conclude Z.
+        Step 2: ...
+        Therefore, the answer is TRUE/FALSE/UNKNOWN.
+    """
+    steps = []
+    lines = output_text.strip().split('\n')
+    final_answer = "UNKNOWN"
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Parse step lines
+        step_match = re.match(r'^Step\s*\d+[:\.]?\s*(.+)$', line, re.IGNORECASE)
+        if step_match:
+            step_text = step_match.group(1)
+            steps.append({
+                "step_idx": len(steps),
+                "thought": step_text,
+                "action": None,  # No action in raw CoT
+                "option_type": None,
+                "option_args": [],
+                "solver_valid": None,
+                "solver_error": None,
+            })
+            continue
+        
+        # Parse final answer patterns
+        # "Therefore, the answer is TRUE/FALSE/UNKNOWN."
+        # "The answer is TRUE."
+        # "Final Answer: TRUE"
+        answer_patterns = [
+            r'(?:therefore|thus|hence|so)[,\s]+(?:the\s+)?answer\s+is\s+(TRUE|FALSE|UNKNOWN)',
+            r'the\s+answer\s+is\s+(TRUE|FALSE|UNKNOWN)',
+            r'final\s+answer[:\s]+(TRUE|FALSE|UNKNOWN)',
+            r'conclusion[:\s]+(TRUE|FALSE|UNKNOWN)',
+        ]
+        
+        for pattern in answer_patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                final_answer = match.group(1).upper()
+                break
+    
+    return {
+        "problem_id": problem.problem_id,
+        "premises": problem.nl_premises,
+        "conclusion": problem.target_conclusion,
+        "label": problem.label,
+        "final_answer": final_answer,
+        "correct": final_answer == problem.label,
+        "num_steps": len(steps),
+        "steps": steps,
+        "all_steps_valid": False,  # Can't verify raw CoT with symbolic solver
+        "valid_step_count": 0,
+        "total_step_count": len(steps),
+    }
+
+
 def verify_traces_with_solver(
     traces: list[dict],
     problems: list[LogicalState],
@@ -251,6 +343,7 @@ def generate_traces_vllm(
     problems: List[LogicalState],
     config: VLLMGenerationConfig,
     tensor_parallel_size: int = 1,
+    raw_cot: bool = False,
 ) -> List[dict]:
     """
     Generate traces using vLLM for optimized inference.
@@ -320,7 +413,7 @@ def generate_traces_vllm(
     prompt_to_problem = []
     
     for problem in problems:
-        prompt = build_prompt(problem)
+        prompt = build_prompt(problem, raw_cot=raw_cot)
         for _ in range(config.samples_per_problem):
             all_prompts.append(prompt)
             prompt_to_problem.append(problem)
@@ -340,7 +433,7 @@ def generate_traces_vllm(
     for i, output in enumerate(tqdm(outputs, desc="Parsing")):
         problem = prompt_to_problem[i]
         generated_text = output.outputs[0].text
-        trace_dict = parse_trace_output(generated_text, problem)
+        trace_dict = parse_trace_output(generated_text, problem, raw_cot=raw_cot)
         trace_dict["raw_output"] = generated_text  # Keep for debugging
         all_traces.append(trace_dict)
     
@@ -360,6 +453,7 @@ def main():
     parser.add_argument("--tensor-parallel-size", type=int, default=1, help="GPUs for tensor parallelism")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--skip-verify", action="store_true", help="Skip solver verification")
+    parser.add_argument("--raw-cot", action="store_true", help="Use raw CoT format (no Option tags)")
     args = parser.parse_args()
     
     output_dir = Path(args.output)
@@ -397,6 +491,7 @@ def main():
         problems=problems,
         config=config,
         tensor_parallel_size=args.tensor_parallel_size,
+        raw_cot=args.raw_cot,
     )
     
     gen_time = (datetime.now() - start_time).total_seconds()
