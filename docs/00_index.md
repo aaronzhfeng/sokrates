@@ -27,7 +27,8 @@ A neuro-symbolic approach to logical reasoning that instantiates Sutton's Option
 | [15 - Optimization Plan](15_optimization_plan.md) | Performance optimization implementation roadmap |
 | [16 - Prompt Evolution](16_prompt_evolution.md) | Trace generation prompt design history |
 | [17 - vLLM Inference Config](17_vllm_inference_config.md) | vLLM configuration testing & best practices |
-| [18 - Hyperparameter Search](18_hyperparameter_search.md) | **NEW:** Temperature, max_steps, samples testing data |
+| [18 - Hyperparameter Search](18_hyperparameter_search.md) | Temperature, max_steps, samples testing data |
+| [19 - Experimental Approach](19_experimental_approach.md) | **KEY:** Overall strategy, PrOntoQA-only SFT rationale, FOLIO transfer |
 
 ---
 
