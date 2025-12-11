@@ -29,6 +29,7 @@ A neuro-symbolic approach to logical reasoning that instantiates Sutton's Option
 | [17 - vLLM Inference Config](17_vllm_inference_config.md) | vLLM configuration testing & best practices |
 | [18 - Hyperparameter Search](18_hyperparameter_search.md) | Temperature, max_steps, samples testing data |
 | [19 - Experimental Approach](19_experimental_approach.md) | **KEY:** Overall strategy, PrOntoQA-only SFT rationale, FOLIO transfer |
+| [20 - Ablation Studies](20_ablation_studies.md) | **KEY:** w/o Solver ablation results and analysis |
 
 ---
 
