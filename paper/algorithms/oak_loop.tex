@@ -8,7 +8,7 @@
 \textbf{Output}: Aligned model $\pi^*$, option head $\qhat^*$
 \begin{algorithmic}[1]
 \FOR{iteration $i = 1, \ldots, N$}
-    \STATE \textbf{Generate:} Sample $K{=}8$ traces/problem from $\pi_{i-1}$
+    \STATE \textbf{Generate:} Sample $K$ traces/problem from $\pi_{i-1}$ (ours: $K{=}2$)
     \STATE \textbf{Verify:} Label each step with solver (Eq.~\ref{eq:step_valid})
     \STATE \textbf{Update $\qhat$:} Train option head (Eq.~\ref{eq:qhat_loss})
     \STATE \textbf{Build preferences:} Construct $(\tau_w, \tau_l)$ pairs

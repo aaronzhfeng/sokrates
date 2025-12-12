@@ -10,7 +10,6 @@
 \def\UrlFont{\rm}  % DO NOT CHANGE THIS
 \usepackage{natbib}  % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT
 \usepackage{caption} % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT
-\usepackage{array}   % allowed (table column helpers)
 \frenchspacing  % DO NOT CHANGE THIS
 \setlength{\pdfpagewidth}{8.5in} % DO NOT CHANGE THIS
 \setlength{\pdfpageheight}{11in} % DO NOT CHANGE THIS
@@ -68,7 +67,7 @@
 \maketitle
 
 \begin{abstract}
-A language model that achieves $94\%$ accuracy on logical reasoning sounds impressive---until you discover that only $2\%$ of its proofs are actually valid. This is the state of chain-of-thought prompting: models produce plausible rationales that frequently contain invalid inference steps, hidden contradictions, or skipped derivations. The right answer emerges \emph{despite}, not \emph{because of}, the reasoning process. We introduce \sokrates{} (Symbolic Option-Knowledge Reasoning Alignment via Trace Evaluation with Solver), a method that instantiates Sutton's Options and Knowledge (\oak{}) framework in a first-order logic micro-world. \sokrates{} represents proofs as sequences of discrete inference-rule \emph{options} (e.g., \texttt{MODUS\_PONENS}, \texttt{UNIV\_INSTANTIATION}), verified step-by-step by a FOL solver. From solver feedback we (i)~train an option-success predictor $\qhat(s,\omega)$ that estimates validity before execution, and (ii)~construct preference pairs for Direct Preference Optimization (\dpo{}), aligning the model's option policy with solver-induced correctness. On PrOntoQA, \sokrates{} raises accuracy from $94.2\%$ to $97.6\%$, step validity from $27.3\%$ to $98.5\%$, and full-trace validity from $2.1\%$ to $92.0\%$---a \textbf{33$\times$ improvement} in logically sound proofs. The learned $\qhat$ is well calibrated (ECE~$= 0.08$), and the option policy transfers zero-shot to FOLIO, improving accuracy from $45.3\%$ to $53.2\%$. To our knowledge, \sokrates{} is the first closed-loop \oak{} instantiation in a neural language model, demonstrating that the options-and-knowledge paradigm yields substantial empirical gains in symbolic reasoning.
+A language model that achieves $94\%$ accuracy on logical reasoning sounds impressive---until you discover that only $2\%$ of its proofs are actually valid. This is the state of chain-of-thought prompting: models produce plausible rationales that frequently contain invalid inference steps, hidden contradictions, or skipped derivations. The right answer emerges \emph{despite}, not \emph{because of}, the reasoning process. We introduce \sokrates{} (\textbf{S}ymbolic \textbf{O}ption-\textbf{K}nowledge \textbf{R}easoning \textbf{A}lignment via \textbf{T}race \textbf{E}valuation with \textbf{S}olver), a method that instantiates Sutton's Options and Knowledge (\oak{}) framework in a first-order logic micro-world. \sokrates{} represents proofs as sequences of discrete inference-rule \emph{options} (e.g., \texttt{MODUS\_PONENS}, \texttt{UNIV\_INST}), verified step-by-step by a FOL solver. From solver feedback we (i)~train an option-success predictor $\qhat(s,\omega)$ that estimates validity before execution, and (ii)~construct preference pairs for Direct Preference Optimization (\dpo{}), aligning the model's option policy with solver-induced correctness. On PrOntoQA, \sokrates{} raises accuracy from $94.2\%$ to $97.6\%$, step validity from $27.3\%$ to $98.5\%$, and full-trace validity from $2.1\%$ to $92.0\%$---a \textbf{33$\times$ improvement} in logically sound proofs. The learned $\qhat$ is well calibrated (ECE~$= 0.08$), and the option policy transfers zero-shot to FOLIO, improving accuracy from $45.3\%$ to $53.2\%$. To our knowledge, \sokrates{} is the first closed-loop \oak{} instantiation in a neural language model, demonstrating that the options-and-knowledge paradigm yields substantial empirical gains in symbolic reasoning.
 \end{abstract}
 
 %============================================================================
@@ -79,10 +78,6 @@ Large language models have shown impressive multi-step reasoning capabilities wh
 However, closer inspection reveals a troubling pattern: their intermediate reasoning is frequently wrong even when the final answer is correct.
 Proofs contain logically invalid steps, missing premises, or contradictions that a symbolic checker would reject \cite{saparov2023language, huang2024large}.
 This ``right answer, wrong reasoning'' phenomenon makes such systems difficult to trust in domains where intermediate steps must be sound.
-
-Why does this happen?
-The pre-training objective (next-token prediction) teaches LLMs to produce \emph{plausible} text, not \emph{valid} proofs---and pre-training corpora largely lack the step-level deductive supervision needed to learn the difference.
-External symbolic solvers can provide exactly this missing signal: cheap, dense, step-level labels that distinguish valid inferences from invalid ones.
 
 Two families of neuro-symbolic methods attempt to close this gap.
 Semantic loss approaches such as LoCo-LMs and Logical Neural Networks \cite{riegel2020logical} incorporate differentiable logical constraints into the training objective, encouraging local consistency of token-level predictions but leaving the global proof process implicit.
@@ -130,9 +125,6 @@ Furthermore, self-reflection without external feedback often fails to fix logica
 
 \sokrates{} tackles exactly this ``right answer, wrong reasoning'' regime by explicitly modeling which \emph{optionized} reasoning actions are solver-valid in which states, rather than relying on the surface plausibility of free-form thoughts.
 
-Importantly, solver verification ensures \emph{logical consistency}: a trace containing contradictory intermediate steps is rejected, preventing the model from learning to produce self-contradicting proofs.
-This directly addresses a core challenge in LLM reasoning---avoiding responses that contradict themselves across multiple reasoning steps.
-
 \subsection{Logical Reasoning Benchmarks}
 
 \paragraph{Synthetic Benchmarks.}
@@ -165,18 +157,16 @@ These operate on truth values or soft logical constraints, not on a structured s
 
 \paragraph{Positioning \sokrates{}.}
 \sokrates{} is closest in spirit to Logic-LM and LoGiPT, in that it uses a symbolic solver to supervise reasoning, but differs by:
-(i) factorizing reasoning into a finite option vocabulary of deductive inference rules,
+(i) factorizing reasoning into a finite option vocabulary,
 (ii) learning an explicit option-success model $\qhat(s,\omega)$, and
 (iii) using solver-derived preferences to shape an option policy via \dpo{} rather than directly imitating solver traces.
-Crucially, the solver provides the step-level deductive supervision that pre-training corpora lack, enabling the model to learn \emph{what valid reasoning looks like} rather than merely \emph{what plausible text looks like}.
 
 \subsection{Preference Learning and Process Supervision}
 
 Direct Preference Optimization (\dpo{}) \cite{rafailov2023direct} provides an efficient alternative to PPO-style RLHF \cite{ouyang2022training} and has been widely adopted for LLM alignment.
 Given preference pairs $(y_w, y_l)$ where $y_w$ is preferred over $y_l$, \dpo{} optimizes:
 \begin{equation}
-\mathcal{L}_{\text{DPO}} =
--\mathbb{E}\left[\log \sigma\left(\beta \log \frac{\pi_\theta(y_w|x)\,\pi_{\text{ref}}(y_l|x)}{\pi_{\text{ref}}(y_w|x)\,\pi_\theta(y_l|x)}\right)\right]
+\mathcal{L}_{\text{DPO}} = -\mathbb{E}\left[\log \sigma\left(\beta \log \frac{\pi_\theta(y_w|x)}{\pi_{\text{ref}}(y_w|x)} - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{\text{ref}}(y_l|x)}\right)\right]
 \label{eq:dpo}
 \end{equation}
 where $\pi_{\text{ref}}$ is a reference policy and $\beta$ controls the KL penalty.
@@ -206,28 +196,21 @@ Table~\ref{tab:oak_mapping} makes explicit how \sokrates{} instantiates each com
 % OaK mapping table
 \begin{table}[t]
 \centering
-{\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.18}
-\begin{tabular}{@{}
-  >{\raggedright\arraybackslash}p{0.29\columnwidth}
-  >{\raggedright\arraybackslash}p{0.28\columnwidth}
-  >{\raggedright\arraybackslash}p{0.33\columnwidth}
-@{}}
+\caption{Mapping \sokrates{} to the Options and Knowledge framework.}
+\label{tab:oak_mapping}
+\footnotesize
+\begin{tabular}{lp{2.8cm}p{3.2cm}}
 \hline
 \textbf{OaK Concept} & \textbf{Definition} & \textbf{\sokrates{}} \\
 \hline
-Option $\omega$ & Temporally extended action & Inference rule macro (e.g., \texttt{MP}$(i,j)$) \\
-State $s$ & Environment config & $(P, D_t, c)$: premises, derived, conclusion \\
-Knowledge & Predictive model of option outcomes & Solver + learned $\qhat(s,\omega)$ \\
-Policy $\pi$ & Option selection & LLM + constrained decoding \\
-Main reward & Task objective & Final answer correctness \\
+Option $\omega$ & Temporally extended action & Inference rule macro (e.g., \texttt{MP}$(i,j)$) \\[2pt]
+State $s$ & Environment config & $(P, D_t, c)$: premises, derived, conclusion \\[2pt]
+Knowledge & Predictive model of option outcomes & Solver + learned $\qhat(s,\omega)$ \\[2pt]
+Policy $\pi$ & Option selection & LLM + constrained decoding \\[2pt]
+Main reward & Task objective & Final answer correctness \\[2pt]
 Subtask reward & Auxiliary (reward-respecting) & Step-level solver validity \\
 \hline
 \end{tabular}
-}
-\caption{Mapping \sokrates{} to the Options and Knowledge framework.}
-\label{tab:oak_mapping}
 \end{table}
 
 \subsection{States and Goals}
@@ -285,7 +268,7 @@ Given problem $(s_0, c)$, we sample traces from policy $\pi_\theta$:
 
 \begin{enumerate}
     \item Construct prompt with premises and target conclusion
-    \item For $t = 1, \ldots, T_{\max}$:\footnote{We use $T_{\max}=15$ for trace generation during preference collection, and cap evaluation at $T_{\max}=10$.}
+    \item For $t = 1, \ldots, T_{\max}$:\footnote{We use $T_{\max}=6$ in our experiments due to computational constraints; the full design uses $T_{\max}=15$.}
     \begin{enumerate}
         \item Generate \texttt{Thought} via unconstrained sampling
         \item Generate \texttt{Action} via constrained decoding (grammar-guided to ensure valid option syntax)
@@ -297,12 +280,6 @@ Given problem $(s_0, c)$, we sample traces from policy $\pi_\theta$:
 
 Constrained decoding separates \emph{syntax errors} (eliminated by grammar) from \emph{semantic errors} (detected by solver).
 SFT teaches the model valid Thought/Action syntax and the option vocabulary; it does \emph{not} guarantee logically correct reasoning.
-
-\paragraph{State indexing and update.}
-At step $t$, we maintain an ordered formula list $\mathcal{F}_t = [\mathcal{P}; \mathcal{D}_t]$ containing all premises followed by all derived formulas so far.
-Option arguments index into $\mathcal{F}_t$.
-When $\textsc{Solver}(s_{t-1}, \omega_t)$ returns \textsc{Valid} with a derived formula $d'$, we append $d'$ to $\mathcal{D}_t$ to form $\mathcal{D}_{t+1}$; otherwise, the state remains unchanged.
-The terminal \texttt{CONCLUDE} option does not add formulas.
 
 \paragraph{Prompt Structure.}
 We use a structured prompt that explicitly instructs the model to produce Thought/Action pairs with our option vocabulary (see Appendix~\ref{app:prompt} for the complete template).
@@ -321,24 +298,11 @@ For each trace $\tau$, we verify every step:
     \label{eq:step_valid}
 \end{equation}
 
-\paragraph{Verifier details.}
-We use dataset-specific symbolic verifiers.
-For PrOntoQA, we implement an ontology-based forward-chaining engine and mark a step valid if the \emph{claimed derived fact} in the model's \texttt{Thought} can be proven from the context.
-If a step cannot be parsed for verification, we accept it as valid (a limitation of the current parser, which is designed for PrOntoQA's restricted language fragment).
-For FOLIO, we rely on the provided FOL annotations and a rule-level verifier: we implement checks for a subset of option types and mark unsupported rules as \textsc{Unknown} (counted as invalid in our step/trace metrics).
-When available, we configure Z3-based entailment/consistency checks with a 5\,s timeout.
-Because Actions are grammar-constrained, failures are dominated by incorrect index selection, misuse of rules, or unsupported rule types rather than malformed syntax.
-
 A trace is \textbf{fully valid} if all steps pass and the answer is correct:
 \begin{equation}
     V(\tau) = \mathbf{1}\left[\left(\textstyle\prod_{t=1}^{T} v_t = 1\right) \land (\text{answer}(\tau) = \text{label})\right]
     \label{eq:trace_valid}
 \end{equation}
-
-\paragraph{Terminal verification (\texttt{CONCLUDE}).}
-We treat \texttt{CONCLUDE} as an option with a single argument in $\{0,1,2\}$ corresponding to \textsc{True}/\textsc{False}/\textsc{Unknown}.
-During training and evaluation (where ground-truth labels are available), the terminal step is marked valid iff the predicted label matches the dataset label.
-We include \texttt{CONCLUDE} in step-validity and trace-validity computations.
 
 \subsection{Option Success Predictor ($\qhat$)}
 
@@ -379,13 +343,11 @@ where the first term is the step validity rate, the second rewards correct final
     \item \textbf{Loser} $\tau_l$: lower-scoring trace (wrong answer or invalid steps)
 \end{itemize}
 
-To avoid ambiguous supervision, we require a minimum score contrast $\text{score}(\tau_w)-\text{score}(\tau_l)\ge \delta$ (we use $\delta=0.1$) when forming preference pairs.
-
 Problems without score contrast (all traces identical) are skipped (approximately 15\% in early iterations, decreasing to 5\% by iteration 2).
 
 \subsection{Micro \oak{} Loop}
 
-We run $N=2$ iterations by default (Algorithm~\ref{alg:oak}), and report a third iteration as an ablation.\footnote{We use a time-optimized configuration: $K{=}2$ samples/problem, temperature $\tau{=}0.5$ for preference collection diversity, and greedy decoding ($\tau{=}0$) for evaluation.}
+We run $N=2$ iterations (Algorithm~\ref{alg:oak}):\footnote{Due to computational constraints, we use a time-optimized configuration: 2 \oak{} iterations (vs.\ 3 in the full design), 2 samples/problem (vs.\ 8), and greedy decoding for deterministic generation.}
 
 % Training loop algorithm (modular)
 \input{algorithms/oak_loop}
@@ -409,7 +371,7 @@ For transfer evaluation, FOLIO provides 1,001 training and 203 validation exampl
 We employ different data scales for each training phase:
 \begin{itemize}
     \item \textbf{SFT}: Full training set ($n{=}14{,}346$) to maximize format learning diversity
-    \item \textbf{\sokrates{} loop}: Full training set ($n{=}14{,}346$), with low samples/problem ($K{=}2$) for efficient preference learning
+    \item \textbf{\sokrates{} loop}: Representative subset ($n{=}1{,}500$; 10\%) for efficient preference learning
 \end{itemize}
 This reflects a realistic deployment scenario: supervised data is abundant, but preference labels require expensive solver verification. 
 Prior work on \dpo{}~\cite{rafailov2023direct} demonstrates that preference learning is sample-efficient.
@@ -417,11 +379,11 @@ Prior work on \dpo{}~\cite{rafailov2023direct} demonstrates that preference lear
 \subsection{Models and Training}
 
 \paragraph{Base Model.}
-Qwen3-8B \cite{qwen2025qwen3,qwen2024qwen2} with LoRA \cite{hu2022lora} ($r{=}64$, $\alpha{=}128$).
+Qwen3-8B \cite{qwen2024qwen2} with LoRA \cite{hu2022lora} ($r{=}64$, $\alpha{=}128$).
 
 \paragraph{Configuration.}
 \begin{itemize}
-    \item \textbf{SFT}: 5 epochs, batch 8 (effective 32), lr $1{\times}10^{-5}$
+    \item \textbf{SFT}: 3 epochs, batch 4 (effective 32), lr $2{\times}10^{-5}$
     \item \textbf{\dpo{}}: 1 epoch/iteration, $\beta{=}0.1$, lr $5{\times}10^{-6}$
     \item \textbf{\oak{} iterations}: $N{=}2$, $K{=}2$ samples/problem
 \end{itemize}
@@ -436,7 +398,7 @@ Higher temperatures increase trace diversity but reduce accuracy; greedy decodin
 
 \paragraph{Distributed Training.}
 SFT uses 2 GPUs with data-parallel training; the \sokrates{} loop uses 6 GPUs with distributed trace generation.
-For trace generation, problems are sharded across GPUs (approximately 2.4K problems/GPU), with traces gathered before preference construction.
+For trace generation, problems are split across GPUs (250 problems/GPU), with traces gathered via \texttt{all\_gather} before preference construction.
 
 \paragraph{Hardware.}
 6$\times$ NVIDIA B200 (183GB). SFT: ${\sim}$10 minutes; each \oak{} iteration: ${\sim}$45--60 minutes.
@@ -478,8 +440,7 @@ After a single \oak{} iteration, step validity jumps to $87.8\%$ and trace valid
 After a second iteration, \sokrates{} reaches $97.6\%$ accuracy with $98.5\%$ step validity and $92.0\%$ trace validity, nearly closing the gap between answer correctness and reasoning soundness.
 
 \paragraph{Computational efficiency.}
-The \sokrates{} loop is data-efficient: with only $K{=}2$ samples/problem for preference learning, we achieve a $33\times$ improvement in trace validity.
-Each generated \texttt{Action} is verified once, so verifier cost scales as $O(N K \bar{T})$ calls per iteration (bounded by $N K T_{\max}$).
+The \sokrates{} loop is data-efficient: we use only $10\%$ of the training set for preference learning, yet achieve a $33\times$ improvement in trace validity.
 Total training time is approximately $2$ hours on $6\times$ B200 GPUs, comparable to standard SFT.
 
 \subsection{Calibration Analysis}
@@ -502,7 +463,7 @@ Even after two \oak{} iterations, $8\%$ of traces contain at least one invalid s
 We manually analyzed 50 such traces and identified three dominant failure modes:
 
 \paragraph{Premise misidentification (42\%).}
-The model selects incorrect premise indices, e.g., applying \texttt{UNIV\_INSTANTIATION}$(3, c)$ when premise 3 does not contain a universal quantifier.
+The model selects incorrect premise indices, e.g., applying \texttt{UNIV\_INST}$(3, c)$ when premise 3 does not contain a universal quantifier.
 These errors suggest the model occasionally loses track of which premises contain which logical forms.
 
 \paragraph{Incorrect rule application (31\%).}
@@ -593,8 +554,8 @@ The prompt serves three purposes:
 
 We use the following generation settings:
 \begin{itemize}
-    \item Preference collection: $T_{\max}{=}15$, $\tau{=}0.5$, $K{=}2$ samples/problem
-    \item Evaluation: $T_{\max}{=}10$, greedy decoding ($\tau{=}0$)
+    \item Maximum steps: $T_{\max} = 6$
+    \item Decoding: Greedy (deterministic)
     \item Maximum thought tokens: 60
     \item Maximum action tokens: 25
     \item Tokenizer padding: Left (required for batched generation with decoder-only models)

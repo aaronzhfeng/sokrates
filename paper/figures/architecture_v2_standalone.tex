@@ -62,7 +62,7 @@
     \node[process] (dpo) at (update |- sft) {DPO};
 
     % --- 6. Solver ---
-    \node[solver, below=1.6cm of build] (z3) {FOL Solver (Z3)};
+    \node[solver, below=1.6cm of build] (z3) {Symbolic Solver};
 
     % --- 7. Outputs ---
     \node[output, right=2.0cm of update] (out_q) {Calibrated $\qhat^*$};
@@ -87,7 +87,7 @@
             rounded corners=10pt, 
             fit=(gen) (update) (loop_top) (loop_bottom),
             inner sep=0.5cm,
-            label={[anchor=south, yshift=0.2cm]north:\textbf{\textit{Micro OaK Loop} (repeat $N=2$ iterations)}}
+            label={[anchor=south, yshift=0.2cm]north:\textbf{\textit{Micro OaK Loop} (repeat $N$ iterations)}}
         ] (loop_box) {};
     \end{scope}
 

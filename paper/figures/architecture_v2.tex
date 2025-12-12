@@ -16,7 +16,7 @@
 \begin{figure*}[t]
 \centering
 \begin{tikzpicture}[
-    scale=0.72, transform shape,
+    scale=0.68, transform shape,
     node distance=1.2cm and 1.5cm,
     % Style Definitions
     base/.style={
@@ -60,7 +60,7 @@
     \node[process] (dpo) at (update |- sft) {DPO};
 
     % --- 6. Solver ---
-    \node[solver, below=1.6cm of build] (z3) {FOL Solver (Z3)};
+    \node[solver, below=1.6cm of build] (z3) {Symbolic Solver};
 
     % --- 7. Outputs ---
     \node[output, right=2.0cm of update] (out_q) {Calibrated $\qhat^*$};
@@ -85,7 +85,7 @@
             rounded corners=10pt, 
             fit=(gen) (update) (loop_top) (loop_bottom),
             inner sep=0.5cm,
-            label={[anchor=south, yshift=0.2cm]north:\textbf{\textit{Micro OaK Loop} (repeat $N=2$ iterations)}}
+            label={[anchor=south, yshift=0.2cm]north:\textbf{\textit{Micro OaK Loop} (repeat $N$ iterations)}}
         ] (loop_box) {};
     \end{scope}
 
@@ -141,7 +141,7 @@
     \node[font=\scriptsize, text=black!60, align=center] at ($(sft.south)+(0,-0.3)$) {format learning};
 
 \end{tikzpicture}
-\caption{The \sokrates{} architecture. Data flows through an optionizer to create Thought/Action training pairs for SFT, producing initial policy $\pi_0$. The Micro OaK Loop iteratively generates traces, verifies them with a FOL solver, updates the option-success predictor $\qhat$, builds preferences from valid/invalid traces, and applies DPO to align the policy. Dashed arrows show feedback loops within the iterative training.}
+\caption{The \sokrates{} architecture. We optionize proofs for SFT to obtain initial policy $\pi_0$, then repeat a micro \oak{} loop: generate traces, verify with a symbolic solver, update $\qhat$, build preferences, and apply \dpo{} to align the policy.}
 \label{fig:architecture}
 \end{figure*}
 

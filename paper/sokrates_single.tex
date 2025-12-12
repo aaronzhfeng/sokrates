@@ -116,7 +116,155 @@ To our knowledge, \sokrates{} represents the first closed-loop instantiation of 
 
 % Architecture figure (moved to Introduction per improvement suggestions)
 % Old version preserved in figures/architecture.tex
-\input{figures/architecture_v2}
+% === BEGIN INPUT: paper/figures/architecture_v2.tex ===
+% Architecture diagram v2 - Updated layout with improved visual design
+% Note: This file is for inclusion in the main paper, not standalone compilation
+% For standalone compilation, see architecture_v2_standalone.tex
+
+% --- Colors ---
+\definecolor{myblue}{RGB}{218, 232, 252}   % Data/Blue
+\definecolor{mygreen}{RGB}{213, 232, 212}  % Init/Green
+\definecolor{myorange}{RGB}{255, 224, 204} % Loop/Orange
+\definecolor{mypurple}{RGB}{225, 213, 231} % Solver/Purple
+\definecolor{myred}{RGB}{248, 206, 204}    % Output/Red
+\definecolor{mygrey}{RGB}{250, 250, 250}   % Background
+
+% --- Macros (qhat defined in main document) ---
+\newcommand{\pihat}{\pi^*}
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+    scale=0.68, transform shape,
+    node distance=1.2cm and 1.5cm,
+    % Style Definitions
+    base/.style={
+        draw=black!60, 
+        thick, 
+        rounded corners=2pt, 
+        align=center, 
+        font=\small\sffamily,
+        drop shadow={opacity=0.15},
+        inner sep=6pt
+    },
+    data/.style={base, fill=myblue, minimum width=2.2cm, minimum height=1cm},
+    process/.style={base, fill=myorange, minimum width=2.4cm, minimum height=1.1cm},
+    model/.style={base, fill=mygreen, minimum width=2.2cm, minimum height=1cm},
+    output/.style={base, fill=myred, minimum width=2.2cm, minimum height=1cm},
+    solver/.style={base, fill=mypurple, minimum width=2.5cm, minimum height=1cm},
+    arrow/.style={-Latex, thick, color=black!70},
+    line/.style={thick, color=black!70}, % No arrow head
+    dashed_arrow/.style={-Latex, thick, dashed, color=black!70},
+    group_label/.style={font=\bfseries\itshape\color{black!60}, anchor=south} 
+]
+    % --- 1. Initialization Block ---
+    \node[model] (sft) {SFT};
+    \node[model, above=1.5cm of sft] (pi0) {$\pi_0$}; 
+
+    % --- 2. Optionizer ---
+    \node[process, left=2.0cm of $(sft.west)!0.5!(pi0.west)$] (optionizer) {Optionizer};
+
+    % --- 3. Data Input ---
+    \coordinate (data_x) at ($(optionizer.west) - (2.0cm, 0)$);
+    \node[data] (pronto) at (data_x |- pi0) {PrOntoQA};
+    \node[data] (folio) at (data_x |- sft) {FOLIO};
+
+    % --- 4. Micro OaK Loop - Top Row ---
+    \node[process, right=2.0cm of pi0] (gen) {Generate\\Traces};
+    \node[process, right=1.0cm of gen] (verify) {Solver\\Verify};
+    \node[process, right=1.0cm of verify] (update) {Update\\$\qhat$};
+
+    % --- 5. Micro OaK Loop - Bottom Row ---
+    \node[process] (build) at (verify |- sft) {Build\\Preferences};
+    \node[process] (dpo) at (update |- sft) {DPO};
+
+    % --- 6. Solver ---
+    \node[solver, below=1.6cm of build] (z3) {Symbolic Solver};
+
+    % --- 7. Outputs ---
+    \node[output, right=2.0cm of update] (out_q) {Calibrated $\qhat^*$};
+    \node[output] (out_pi) at (out_q |- dpo) {Aligned $\pihat$};
+
+    % --- 8. Group Labels ---
+    \coordinate (label_y) at ($(pi0.north) + (0, 0.4cm)$);
+    \node[group_label] at (pronto |- label_y) {Data};
+    \node[group_label] at (pi0 |- label_y) {Init};
+    \node[group_label] at (out_q |- label_y) {Output};
+
+    % --- Background Box ---
+    \begin{scope}[on background layer]
+        \coordinate (loop_top) at ($(update.north) + (0, 0.9cm)$);
+        \coordinate (loop_bottom) at ($(dpo.south) - (0, 0.9cm)$);
+        
+        \node[
+            draw=black!40, 
+            thick, 
+            dashed, 
+            fill=mygrey, 
+            rounded corners=10pt, 
+            fit=(gen) (update) (loop_top) (loop_bottom),
+            inner sep=0.5cm,
+            label={[anchor=south, yshift=0.2cm]north:\textbf{\textit{Micro OaK Loop} (repeat $N$ iterations)}}
+        ] (loop_box) {};
+    \end{scope}
+
+    % --- Connections ---
+    % 1. Data -> Optionizer
+    \coordinate (merge_point) at ($(pronto.east)!0.5!(optionizer.west)$);
+    \draw[line] (pronto.east) -- (merge_point |- pronto.east);
+    \draw[line] (folio.east) -- (merge_point |- folio.east);
+    \draw[line] (merge_point |- pronto.east) -- (merge_point |- folio.east);
+    \draw[arrow] (merge_point |- optionizer.west) -- (optionizer.west);
+
+    % 2. Optionizer -> SFT
+    \draw[arrow] (optionizer.south) |- (sft.west) node[pos=0.75, above, font=\scriptsize, align=center] {proof $\to$ \\ Thought/Action};
+    
+    % 3. SFT -> Pi0
+    \draw[arrow] (sft.north) -- (pi0.south);
+
+    % 4. Pi0 -> Generate
+    \draw[arrow] (pi0.east) -- (gen.west);
+
+    % 5. Loop Internal Flow
+    \draw[arrow] (gen.east) -- (verify.west);
+    \draw[arrow] (verify.east) -- (update.west);
+    \draw[arrow] (verify.south) -- node[midway, right, font=\scriptsize] {Valid/Invalid} (build.north);
+    \draw[arrow] (build.east) -- (dpo.west);
+
+    % 6. Solver Connection
+    \draw[arrow] (z3.north) -- (build.south);
+
+    % 7. Output Connections
+    \draw[arrow] (update.east) -- (out_q.west);
+    \draw[arrow] (dpo.east) -- (out_pi.west);
+
+    % --- Feedback Loops ---
+    
+    % DPO -> Generate (Bottom loop)
+    \path (dpo.south) -- ++(0,-0.7) coordinate (bottom_bus);
+    \draw[dashed_arrow, rounded corners] 
+        (dpo.south) 
+        -- (dpo.south |- bottom_bus) 
+        -- node[pos=0.30, below, yshift=-2pt, font=\scriptsize] {Update Policy $\pi$} (gen.south |- bottom_bus) 
+        -- (gen.south);
+
+    % Update -> Generate (Top loop)
+    \path (update.north) -- ++(0,0.7) coordinate (top_bus);
+    \draw[dashed_arrow, rounded corners] 
+        (update.north) 
+        -- (update.north |- top_bus) 
+        -- (gen.north |- top_bus) 
+        -- (gen.north);
+
+    % Text Annotations
+    \node[font=\scriptsize, text=black!60, align=center] at ($(sft.south)+(0,-0.3)$) {format learning};
+
+\end{tikzpicture}
+\caption{The \sokrates{} architecture. We optionize proofs for SFT to obtain initial policy $\pi_0$, then repeat a micro \oak{} loop: generate traces, verify with a symbolic solver, update $\qhat$, build preferences, and apply \dpo{} to align the policy.}
+\label{fig:architecture}
+\end{figure*}
+
+% === END INPUT: paper/figures/architecture_v2.tex ===
 
 %============================================================================
 \section{Background and Related Work}
@@ -250,7 +398,37 @@ Although each option is invoked in a single decision step, it spans multiple sub
 Thus, options function as \emph{temporally extended cognitive macros} in the \oak{} sense.
 
 % Option vocabulary table (modular)
-\input{tables/options}
+% === BEGIN INPUT: paper/tables/options.tex ===
+% tables/options.tex
+% Option vocabulary table
+
+\begin{table}[t]
+\centering
+{\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.95}
+\begin{tabular}{@{}p{0.40\columnwidth}c c p{0.34\columnwidth}@{}}
+\hline
+\textbf{Option} & \textbf{Sym.} & \textbf{Args} & \textbf{Rule} \\
+\hline
+\texttt{MODUS\_\allowbreak PONENS} & MP & $(i, j)$ & $P, P{\rightarrow}Q \vdash Q$ \\
+\texttt{MODUS\_\allowbreak TOLLENS} & MT & $(i, j)$ & $\neg Q, P{\rightarrow}Q \vdash \neg P$ \\
+\texttt{UNIV\_\allowbreak INSTANTIATION} & UI & $(i, c)$ & $\forall x.P(x) \vdash P(c)$ \\
+\texttt{EXIST\_\allowbreak GENERALIZATION} & EG & $(i, x)$ & $P(c) \vdash \exists x.P(x)$ \\
+\texttt{AND\_INTRO} & $\land$I & $(i, j)$ & $P, Q \vdash P \land Q$ \\
+\texttt{AND\_ELIM} & $\land$E & $(i, s)$ & $P \land Q \vdash P$ or $Q$ \\
+\texttt{OR\_INTRO} & $\lor$I & $(i, j)$ & $P \vdash P \lor Q$ \\
+\texttt{DISJUNCTIVE\_\allowbreak SYLLOGISM} & DS & $(i, j)$ & $P{\lor}Q, \neg P \vdash Q$ \\
+\texttt{HYPOTHETICAL\_\allowbreak SYLLOGISM} & HS & $(i, j)$ & $P{\rightarrow}Q, Q{\rightarrow}R \vdash P{\rightarrow}R$ \\
+\texttt{DOUBLE\_\allowbreak NEGATION} & DN & $(i)$ & $\neg\neg P \vdash P$ \\
+\texttt{CONCLUDE} & --- & $(l)$ & \parbox{0.95\linewidth}{Terminal: 0=True,\\ \mbox{1=False, 2=Unknown}} \\
+\hline
+\end{tabular}
+}
+\caption{Option vocabulary. These inference-rule macros cover the proof patterns in PrOntoQA.}
+\label{tab:options}
+\end{table}
+% === END INPUT: paper/tables/options.tex ===
 
 \subsection{Knowledge: Solver as Ground Truth}
 
@@ -271,7 +449,54 @@ Following ReAct \cite{yao2023react}, each proof step is a \textbf{Thought/Action
 Figure~\ref{fig:trace_example} shows a complete example trace with solver annotations.
 
 % Trace example figure (modular)
-\input{figures/trace_example}
+% === BEGIN INPUT: paper/figures/trace_example.tex ===
+% figures/trace_example.tex
+% Example optionized proof trace with solver annotations
+
+\begin{figure}[t]
+\centering
+\footnotesize
+\begin{tikzpicture}
+\node[draw=black!50, rounded corners=3pt, fill=gray!5, inner sep=6pt, text width=0.92\columnwidth] {
+\begin{tabular}{@{}l@{}}
+\textbf{Premises:}\\[2pt]
+\hspace{1em}$p_0$: Every wumpus is a tumpus.\\
+\hspace{1em}$p_1$: Every tumpus is a rompus.\\
+\hspace{1em}$p_2$: Stella is a wumpus.\\[3pt]
+\textbf{Query:} Is Stella a rompus?\\
+\end{tabular}
+};
+\end{tikzpicture}
+
+\vspace{0.4em}
+\rule{0.92\columnwidth}{0.4pt}
+\vspace{0.3em}
+
+\begin{tikzpicture}
+\node[text width=0.92\columnwidth, inner sep=0pt] {
+\begin{tabular}{@{}p{0.68\columnwidth}@{\hspace{0.5em}}r@{}}
+\textbf{Step 1} & \\[2pt]
+\hspace{0.5em}\textsf{Thought:} \textit{Stella is a wumpus ($p_2$). Every wumpus} & \\
+\hspace{0.5em}\textit{is a tumpus ($p_0$). So Stella is a tumpus.} & \\[2pt]
+\hspace{0.5em}\textsf{Action:} \texttt{<Option type="MODUS\_PONENS" args="[2, 0]" />} & \\[2pt]
+\hspace{0.5em}$\rightarrow d_0$: Stella is a tumpus. & \colorbox{green!15}{{\color{green!50!black}\checkmark} $\qhat{=}0.91$} \\[6pt]
+
+\textbf{Step 2} & \\[2pt]
+\hspace{0.5em}\textsf{Thought:} \textit{Stella is a tumpus ($d_0$). Every tumpus} & \\
+\hspace{0.5em}\textit{is a rompus ($p_1$). So Stella is a rompus.} & \\[2pt]
+\hspace{0.5em}\textsf{Action:} \texttt{<Option type="MODUS\_PONENS" args="[3, 1]" />} & \\[2pt]
+\hspace{0.5em}$\rightarrow d_1$: Stella is a rompus. & \colorbox{green!15}{{\color{green!50!black}\checkmark} $\qhat{=}0.94$} \\[6pt]
+
+\textbf{Step 3} & \\[2pt]
+\hspace{0.5em}\textsf{Action:} \texttt{<Option type="CONCLUDE" args="[0]" />} & \\[2pt]
+\hspace{0.5em}$\rightarrow$ \textbf{\textsc{True}} & \colorbox{green!15}{{\color{green!50!black}\checkmark} Correct} \\
+\end{tabular}
+};
+\end{tikzpicture}
+\caption{Example optionized proof trace. Each step includes a natural language \textsf{Thought}, a structured \textsf{Action} (option with arguments), the derived formula, and solver validity with $\qhat$ prediction.}
+\label{fig:trace_example}
+\end{figure}
+% === END INPUT: paper/figures/trace_example.tex ===
 
 %============================================================================
 \section{Method: \sokrates{}}
@@ -388,7 +613,28 @@ Problems without score contrast (all traces identical) are skipped (approximatel
 We run $N=2$ iterations by default (Algorithm~\ref{alg:oak}), and report a third iteration as an ablation.\footnote{We use a time-optimized configuration: $K{=}2$ samples/problem, temperature $\tau{=}0.5$ for preference collection diversity, and greedy decoding ($\tau{=}0$) for evaluation.}
 
 % Training loop algorithm (modular)
-\input{algorithms/oak_loop}
+% === BEGIN INPUT: paper/algorithms/oak_loop.tex ===
+% algorithms/oak_loop.tex
+% SOKRATES training loop algorithm
+
+\begin{algorithm}[tb]
+\caption{\sokrates{} Training Loop}
+\label{alg:oak}
+\textbf{Input}: SFT model $\pi_0$, problems $\mathcal{P}$, solver\\
+\textbf{Output}: Aligned model $\pi^*$, option head $\qhat^*$
+\begin{algorithmic}[1]
+\FOR{iteration $i = 1, \ldots, N$}
+    \STATE \textbf{Generate:} Sample $K$ traces/problem from $\pi_{i-1}$ (ours: $K{=}2$)
+    \STATE \textbf{Verify:} Label each step with solver (Eq.~\ref{eq:step_valid})
+    \STATE \textbf{Update $\qhat$:} Train option head (Eq.~\ref{eq:qhat_loss})
+    \STATE \textbf{Build preferences:} Construct $(\tau_w, \tau_l)$ pairs
+    \STATE \textbf{\dpo{}:} Update $\pi_{i-1} \rightarrow \pi_i$ (Eq.~\ref{eq:dpo})
+\ENDFOR
+\STATE \textbf{return} $\pi_N$, $\qhat$
+\end{algorithmic}
+\end{algorithm}
+
+% === END INPUT: paper/algorithms/oak_loop.tex ===
 
 This constitutes a ``baby \oak{}'' cycle: \emph{experience} (traces) $\rightarrow$ \emph{knowledge} (solver labels, $\qhat$) $\rightarrow$ \emph{policy improvement} (\dpo{}) $\rightarrow$ repeat.
 \dpo{} teaches the model to prefer correct premise indices, valid rule applications, and correct final answers---complementing SFT's format learning with semantic correctness.
@@ -432,7 +678,38 @@ We find that moderate temperature ($\tau{=}0.5$) balances accuracy and diversity
 Higher temperatures increase trace diversity but reduce accuracy; greedy decoding ($\tau{=}0$) produces near-identical traces, limiting preference signal.
 
 % Hyperparameter search table (modular)
-\input{tables/hyperparams}
+% === BEGIN INPUT: paper/tables/hyperparams.tex ===
+% tables/hyperparams.tex
+% Hyperparameter search results for trace generation
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccccc}
+\hline
+\textbf{Config} & \textbf{$\tau$} & \textbf{$T_{\max}$} & \textbf{Acc.} & \textbf{Step} & \textbf{Div.} \\
+\hline
+\multicolumn{6}{l}{\textit{Temperature ($K{=}2$, $T_{\max}{=}10$)}} \\
+Greedy & 0.0 & 10 & 95.0 & 27.2 & 6 \\
+Low & 0.3 & 10 & 96.0 & 27.2 & 58 \\
+Medium & 0.5 & 10 & 95.0 & 36.2 & 78 \\
+High & 0.7 & 10 & 87.0 & 35.4 & 82 \\
+Very high & 1.0 & 10 & 80.0 & 50.1 & 86 \\
+\hline
+\multicolumn{6}{l}{\textit{Max Steps ($K{=}2$, $\tau{=}0.5$)}} \\
+Short & 0.5 & 5 & 90.0 & 34.3 & 74 \\
+Default & 0.5 & 10 & 95.0 & 36.2 & 78 \\
+Long & 0.5 & 15 & 93.0 & 41.0 & 74 \\
+\hline
+\multicolumn{6}{l}{\textit{Samples/Problem ($\tau{=}0.5$, $T_{\max}{=}10$)}} \\
+$K{=}2$ & 0.5 & 10 & 95.0 & 36.2 & 78 \\
+$K{=}4$ & 0.5 & 10 & 96.0 & 35.3 & 94 \\
+\hline
+\end{tabular}
+\caption{Hyperparameter search for trace generation (SFT model, 50 problems $\times$ $K$ samples). Higher temperature increases diversity but reduces accuracy. \textbf{Div.} = \% of problems where the $K$ samples differ. Default (preference collection): $\tau{=}0.5$, $T_{\max}{=}15$, $K{=}2$.}
+\label{tab:hyperparams}
+\end{table}
+
+% === END INPUT: paper/tables/hyperparams.tex ===
 
 \paragraph{Distributed Training.}
 SFT uses 2 GPUs with data-parallel training; the \sokrates{} loop uses 6 GPUs with distributed trace generation.
@@ -461,7 +738,30 @@ For trace generation, problems are sharded across GPUs (approximately 2.4K probl
 %============================================================================
 
 % Main results table (modular)
-\input{tables/main_results}
+% === BEGIN INPUT: paper/tables/main_results.tex ===
+% tables/main_results.tex
+% Main experimental results table
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccc}
+\hline
+\textbf{Model} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} \\
+\hline
+\multicolumn{4}{l}{\textit{No Training (Qwen3-8B)}} \\
+Base CoT & 44.4 & --- & --- \\
+Self-Consistency ($k{=}8$) & 53.8 & --- & --- \\
+\hline
+\multicolumn{4}{l}{\textit{Ours}} \\
+SFT & 94.2 & 27.3 & 2.1 \\
+\sokrates{} (iter 1) & 95.9 & 87.8 & 71.3 \\
+\sokrates{} (iter 2) & \textbf{97.6} & \textbf{98.5} & \textbf{92.0} \\
+\hline
+\end{tabular}
+\caption{Main results on PrOntoQA test set ($n{=}1594$). \sokrates{} improves across all metrics with each \oak{} iteration. Step = step validity (\%), Trace = trace validity (\%).}
+\label{tab:main_results}
+\end{table}
+% === END INPUT: paper/tables/main_results.tex ===
 
 \subsection{Main Results}
 
@@ -523,7 +823,30 @@ We evaluate zero-shot transfer by training models only on PrOntoQA and evaluatin
 FOLIO is substantially harder than PrOntoQA: premises are natural language rather than templated, and proofs are longer and structurally more varied.
 
 % Transfer table (modular)
-\input{tables/transfer}
+% === BEGIN INPUT: paper/tables/transfer.tex ===
+% tables/transfer.tex
+% Transfer evaluation results on FOLIO
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccc}
+\hline
+\textbf{Model} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} \\
+\hline
+\multicolumn{4}{l}{\textit{No Training (Qwen3-8B)}} \\
+Base CoT & 42.9 & --- & --- \\
+Self-Consistency ($k{=}8$) & 42.9 & --- & --- \\
+\hline
+\multicolumn{4}{l}{\textit{PrOntoQA $\to$ FOLIO}} \\
+SFT & 45.3 & 46.5 & 9.9 \\
+\sokrates{} (iter 2) & \textbf{53.2} & \textbf{48.3} & \textbf{14.8} \\
+\hline
+\end{tabular}
+\caption{Zero-shot transfer from PrOntoQA to FOLIO ($n{=}203$). Models trained on PrOntoQA are evaluated on FOLIO without additional fine-tuning.}
+\label{tab:transfer}
+\end{table}
+
+% === END INPUT: paper/tables/transfer.tex ===
 
 Base CoT and self-consistency both achieve $42.9\%$ accuracy on FOLIO.
 Transferring the optionized SFT model yields a modest improvement to $45.3\%$ accuracy, with $46.5\%$ step validity and $9.9\%$ trace validity.
@@ -536,7 +859,31 @@ This suggests that \sokrates{} is not merely overfitting to PrOntoQA's templated
 %============================================================================
 
 % Ablation results table (modular)
-\input{tables/ablations}
+% === BEGIN INPUT: paper/tables/ablations.tex ===
+% tables/ablations.tex
+% Ablation study results
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccc}
+\hline
+\textbf{Configuration} & \textbf{Acc.} & \textbf{Step} & \textbf{Trace} \\
+\hline
+\sokrates{} (2 iterations) & \textbf{97.6} & \textbf{98.5} & \textbf{92.0} \\
+\hline
+\multicolumn{4}{l}{\textit{Knowledge Components}} \\
+\quad w/o solver (answer-only) & 95.5 & 31.6 & 2.2 \\
+\hline
+\multicolumn{4}{l}{\textit{Training Iterations}} \\
+\quad SFT only (0 iter) & 94.2 & 27.3 & 2.1 \\
+\quad 1 iteration & 95.9 & 87.8 & 71.3 \\
+\quad 3 iterations & 98.3 & 98.7 & 91.8 \\
+\hline
+\end{tabular}
+\caption{Ablations on PrOntoQA. Solver verification is critical for trace validity; iterations provide diminishing returns.}
+\label{tab:ablations}
+\end{table}
+% === END INPUT: paper/tables/ablations.tex ===
 
 Table~\ref{tab:ablations} analyzes what components drive the gains.
 
@@ -587,7 +934,34 @@ The prompt serves three purposes:
 (3) constrains the action space to our option vocabulary.
 
 % Full prompt figure (modular)
-\input{figures/full_prompt}
+% === BEGIN INPUT: paper/figures/full_prompt.tex ===
+% figures/full_prompt.tex
+% Complete prompt template for appendix
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.95\columnwidth}{
+\small
+\texttt{You are a logical reasoning assistant. Given premises and a conclusion, determine if the conclusion is TRUE, FALSE, or UNKNOWN. Reason step by step using formal inference rules.}\\[0.5em]
+\texttt{For each step, provide:}\\
+\texttt{Thought: Your reasoning in natural language}\\
+\texttt{Action: <Option type="RULE\_NAME" args="[indices]" />}\\[0.5em]
+\texttt{Available rules: MODUS\_PONENS, MODUS\_TOLLENS, UNIV\_INSTANTIATION, AND\_INTRO, AND\_ELIM, OR\_INTRO, DISJUNCTIVE\_SYLLOGISM, etc.}\\
+\texttt{End with: <Option type="CONCLUDE" args="[0/1/2]" />}\\
+\texttt{(0=TRUE, 1=FALSE, 2=UNKNOWN)}\\[0.5em]
+\texttt{---}\\[0.5em]
+\texttt{Premises:}\\
+\texttt{~~[0] Every wumpus is a tumpus.}\\
+\texttt{~~[1] Every tumpus is a rompus.}\\
+\texttt{~~[2] Stella is a wumpus.}\\[0.5em]
+\texttt{Conclusion to evaluate: Stella is a rompus.}\\[0.5em]
+\texttt{Reasoning:}
+}}
+\caption{Complete prompt template with example problem from PrOntoQA.}
+\label{fig:full_prompt}
+\end{figure}
+
+% === END INPUT: paper/figures/full_prompt.tex ===
 
 \subsection{Generation Parameters}
 

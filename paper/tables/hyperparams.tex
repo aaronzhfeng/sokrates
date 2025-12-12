@@ -3,8 +3,6 @@
 
 \begin{table}[t]
 \centering
-\caption{Hyperparameter search for trace generation (SFT model, 50 problems $\times$ $K$ samples). Higher temperature increases diversity but reduces accuracy. Default: $\tau{=}0.5$, $T_{\max}{=}10$, $K{=}2$.}
-\label{tab:hyperparams}
 \begin{tabular}{lccccc}
 \hline
 \textbf{Config} & \textbf{$\tau$} & \textbf{$T_{\max}$} & \textbf{Acc.} & \textbf{Step} & \textbf{Div.} \\
@@ -26,5 +24,7 @@ $K{=}2$ & 0.5 & 10 & 95.0 & 36.2 & 78 \\
 $K{=}4$ & 0.5 & 10 & 96.0 & 35.3 & 94 \\
 \hline
 \end{tabular}
+\caption{Hyperparameter search for trace generation (SFT model, 50 problems $\times$ $K$ samples). Higher temperature increases diversity but reduces accuracy. \textbf{Div.} = \% of problems where the $K$ samples differ. Default (preference collection): $\tau{=}0.5$, $T_{\max}{=}15$, $K{=}2$.}
+\label{tab:hyperparams}
 \end{table}
 

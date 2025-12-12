@@ -26,17 +26,17 @@
 \textbf{Step 1} & \\[2pt]
 \hspace{0.5em}\textsf{Thought:} \textit{Stella is a wumpus ($p_2$). Every wumpus} & \\
 \hspace{0.5em}\textit{is a tumpus ($p_0$). So Stella is a tumpus.} & \\[2pt]
-\hspace{0.5em}\textsf{Action:} \texttt{UNIV\_INST(0, Stella)} & \\[2pt]
+\hspace{0.5em}\textsf{Action:} \texttt{<Option type="MODUS\_PONENS" args="[2, 0]" />} & \\[2pt]
 \hspace{0.5em}$\rightarrow d_0$: Stella is a tumpus. & \colorbox{green!15}{{\color{green!50!black}\checkmark} $\qhat{=}0.91$} \\[6pt]
 
 \textbf{Step 2} & \\[2pt]
 \hspace{0.5em}\textsf{Thought:} \textit{Stella is a tumpus ($d_0$). Every tumpus} & \\
 \hspace{0.5em}\textit{is a rompus ($p_1$). So Stella is a rompus.} & \\[2pt]
-\hspace{0.5em}\textsf{Action:} \texttt{UNIV\_INST(1, Stella)} & \\[2pt]
+\hspace{0.5em}\textsf{Action:} \texttt{<Option type="MODUS\_PONENS" args="[3, 1]" />} & \\[2pt]
 \hspace{0.5em}$\rightarrow d_1$: Stella is a rompus. & \colorbox{green!15}{{\color{green!50!black}\checkmark} $\qhat{=}0.94$} \\[6pt]
 
 \textbf{Step 3} & \\[2pt]
-\hspace{0.5em}\textsf{Action:} \texttt{CONCLUDE(True)} & \\[2pt]
+\hspace{0.5em}\textsf{Action:} \texttt{<Option type="CONCLUDE" args="[0]" />} & \\[2pt]
 \hspace{0.5em}$\rightarrow$ \textbf{\textsc{True}} & \colorbox{green!15}{{\color{green!50!black}\checkmark} Correct} \\
 \end{tabular}
 };

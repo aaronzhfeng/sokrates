@@ -3,23 +3,27 @@
 
 \begin{table}[t]
 \centering
-\caption{Option vocabulary. These inference-rule macros cover the proof patterns in PrOntoQA.}
-\label{tab:options}
-\begin{tabular}{llll}
+{\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.95}
+\begin{tabular}{@{}p{0.40\columnwidth}c c p{0.34\columnwidth}@{}}
 \hline
 \textbf{Option} & \textbf{Sym.} & \textbf{Args} & \textbf{Rule} \\
 \hline
-\texttt{MODUS\_PONENS} & MP & $(i, j)$ & $P, P{\rightarrow}Q \vdash Q$ \\
-\texttt{MODUS\_TOLLENS} & MT & $(i, j)$ & $\neg Q, P{\rightarrow}Q \vdash \neg P$ \\
-\texttt{UNIV\_INST} & UI & $(i, c)$ & $\forall x.P(x) \vdash P(c)$ \\
-\texttt{EXIST\_GEN} & EG & $(i, x)$ & $P(c) \vdash \exists x.P(x)$ \\
+\texttt{MODUS\_\allowbreak PONENS} & MP & $(i, j)$ & $P, P{\rightarrow}Q \vdash Q$ \\
+\texttt{MODUS\_\allowbreak TOLLENS} & MT & $(i, j)$ & $\neg Q, P{\rightarrow}Q \vdash \neg P$ \\
+\texttt{UNIV\_\allowbreak INSTANTIATION} & UI & $(i, c)$ & $\forall x.P(x) \vdash P(c)$ \\
+\texttt{EXIST\_\allowbreak GENERALIZATION} & EG & $(i, x)$ & $P(c) \vdash \exists x.P(x)$ \\
 \texttt{AND\_INTRO} & $\land$I & $(i, j)$ & $P, Q \vdash P \land Q$ \\
 \texttt{AND\_ELIM} & $\land$E & $(i, s)$ & $P \land Q \vdash P$ or $Q$ \\
-\texttt{OR\_INTRO} & $\lor$I & $(i, Q)$ & $P \vdash P \lor Q$ \\
-\texttt{DISJ\_SYLL} & DS & $(i, j)$ & $P{\lor}Q, \neg P \vdash Q$ \\
-\texttt{HYPO\_SYLL} & HS & $(i, j)$ & $P{\rightarrow}Q, Q{\rightarrow}R \vdash P{\rightarrow}R$ \\
-\texttt{DOUBLE\_NEG} & DN & $(i)$ & $\neg\neg P \vdash P$ \\
-\texttt{CONCLUDE} & --- & $(l)$ & \parbox{2.5cm}{Terminal:\\ T/F/Unknown} \\
+\texttt{OR\_INTRO} & $\lor$I & $(i, j)$ & $P \vdash P \lor Q$ \\
+\texttt{DISJUNCTIVE\_\allowbreak SYLLOGISM} & DS & $(i, j)$ & $P{\lor}Q, \neg P \vdash Q$ \\
+\texttt{HYPOTHETICAL\_\allowbreak SYLLOGISM} & HS & $(i, j)$ & $P{\rightarrow}Q, Q{\rightarrow}R \vdash P{\rightarrow}R$ \\
+\texttt{DOUBLE\_\allowbreak NEGATION} & DN & $(i)$ & $\neg\neg P \vdash P$ \\
+\texttt{CONCLUDE} & --- & $(l)$ & \parbox{0.95\linewidth}{Terminal: 0=True,\\ \mbox{1=False, 2=Unknown}} \\
 \hline
 \end{tabular}
+}
+\caption{Option vocabulary. These inference-rule macros cover the proof patterns in PrOntoQA.}
+\label{tab:options}
 \end{table}
