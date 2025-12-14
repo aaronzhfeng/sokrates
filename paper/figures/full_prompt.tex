@@ -1,7 +1,7 @@
 % figures/full_prompt.tex
 % Complete prompt template for appendix
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
 \fbox{\parbox{0.95\columnwidth}{
 \small
@@ -9,7 +9,7 @@
 \texttt{For each step, provide:}\\
 \texttt{Thought: Your reasoning in natural language}\\
 \texttt{Action: <Option type="RULE\_NAME" args="[indices]" />}\\[0.5em]
-\texttt{Available rules: MODUS\_PONENS, MODUS\_TOLLENS, UNIV\_INSTANTIATION, AND\_INTRO, AND\_ELIM, OR\_INTRO, DISJUNCTIVE\_SYLLOGISM, etc.}\\
+\texttt{Available rules: MODUS\_PONENS, MODUS\_TOLLENS, UNIV\_INSTANTIATION, EXIST\_GENERALIZATION, AND\_INTRO, AND\_ELIM, OR\_INTRO, DISJUNCTIVE\_SYLLOGISM, HYPOTHETICAL\_SYLLOGISM, DOUBLE\_NEGATION (see Table 2 for full list).}\\
 \texttt{End with: <Option type="CONCLUDE" args="[0/1/2]" />}\\
 \texttt{(0=TRUE, 1=FALSE, 2=UNKNOWN)}\\[0.5em]
 \texttt{---}\\[0.5em]
@@ -20,7 +20,7 @@
 \texttt{Conclusion to evaluate: Stella is a rompus.}\\[0.5em]
 \texttt{Reasoning:}
 }}
-\caption{Complete prompt template with example problem from PrOntoQA.}
+\caption{Prompt template with example problem from PrOntoQA. Full option vocabulary in Table~\ref{tab:options}.}
 \label{fig:full_prompt}
 \end{figure}
 

@@ -68,11 +68,8 @@
 \maketitle
 
 \begin{abstract}
-A language model that achieves $94\%$ accuracy on logical reasoning sounds impressive---until you discover that only $2\%$ of its proofs are actually valid. This is the state of chain-of-thought prompting: models produce plausible rationales that frequently contain invalid inference steps, hidden contradictions, or skipped derivations. The right answer emerges \emph{despite}, not \emph{because of}, the reasoning process. We introduce \sokrates{} (Symbolic Option-Knowledge Reasoning Alignment via Trace Evaluation with Solver), a method that instantiates Sutton's Options and Knowledge (\oak{}) framework in a first-order logic micro-world. \sokrates{} represents proofs as sequences of discrete inference-rule \emph{options} (e.g., \texttt{MODUS\_PONENS}, \texttt{UNIV\_INSTANTIATION}), verified step-by-step by a FOL solver. From solver feedback we (i)~train an option-success predictor $\qhat(s,\omega)$ that estimates validity before execution, and (ii)~construct preference pairs for Direct Preference Optimization (\dpo{}), aligning the model's option policy with solver-induced correctness. On PrOntoQA, \sokrates{} raises accuracy from $94.2\%$ to $97.6\%$, step validity from $27.3\%$ to $98.5\%$, and full-trace validity from $2.1\%$ to $92.0\%$, a \textbf{44$\times$ improvement} in logically sound proofs. The learned $\qhat$ is well calibrated (ECE~$= 0.08$), and the option policy transfers zero-shot to FOLIO, improving accuracy from $45.3\%$ to $53.2\%$. To our knowledge, \sokrates{} is the first LLM reasoning system that (i)~represents proofs as a fixed option vocabulary, (ii)~learns an explicit option-success predictor, and (iii)~aligns the option policy using solver-derived \dpo{} preferences in an iterative loop.
+A language model that achieves $94\%$ accuracy on logical reasoning sounds impressive---until you discover that only $2\%$ of its proofs are actually valid. This is the state of chain-of-thought prompting: models produce plausible rationales that frequently contain invalid inference steps, hidden contradictions, or skipped derivations. The right answer emerges \emph{despite}, not \emph{because of}, the reasoning process. We introduce \sokrates{} (Symbolic Option-Knowledge Reasoning Alignment via Trace Evaluation with Solver), a method that instantiates Sutton's Options and Knowledge (\oak{}) framework in a first-order logic micro-world. \sokrates{} represents proofs as sequences of discrete inference-rule \emph{options} (e.g., \texttt{MODUS\_PONENS}, \texttt{UNIV\_INSTANTIATION}), verified step-by-step by a FOL solver. From solver feedback we (i)~train an option-success predictor $\qhat(s,\omega)$ that estimates validity before execution, and (ii)~construct preference pairs for Direct Preference Optimization (\dpo{}), aligning the model's option policy with solver-induced correctness. On PrOntoQA, \sokrates{} raises accuracy from $94.2\%$ to $97.6\%$, step validity from $27.3\%$ to $98.5\%$, and full-trace validity from $2.1\%$ to $92.0\%$---a \textbf{33$\times$ improvement} in logically sound proofs. The learned $\qhat$ is well calibrated (ECE~$= 0.08$), and the option policy transfers zero-shot to FOLIO, improving accuracy from $45.3\%$ to $53.2\%$. To our knowledge, \sokrates{} is the first closed-loop \oak{} instantiation in a neural language model, demonstrating that the options-and-knowledge paradigm yields substantial empirical gains in symbolic reasoning.
 \end{abstract}
-
-% Architecture figure - placed immediately after abstract for page 2 positioning
-\input{figures/architecture_v2}
 
 %============================================================================
 \section{Introduction}
@@ -80,15 +77,15 @@ A language model that achieves $94\%$ accuracy on logical reasoning sounds impre
 
 Large language models have shown impressive multi-step reasoning capabilities when prompted with chain-of-thought (CoT) explanations \cite{wei2022chain} and sampled with self-consistency decoding \cite{wang2023selfconsistency}.
 However, closer inspection reveals a troubling pattern: their intermediate reasoning is frequently wrong even when the final answer is correct.
-Proofs contain logically invalid steps, missing premises, or contradictions that a symbolic checker would reject \cite{saparov2023language, huang2024large, turpin2023unfaithful}.
+Proofs contain logically invalid steps, missing premises, or contradictions that a symbolic checker would reject \cite{saparov2023language, huang2024large}.
 This ``right answer, wrong reasoning'' phenomenon makes such systems difficult to trust in domains where intermediate steps must be sound.
 
 Why does this happen?
-The pre-training objective (next-token prediction) teaches LLMs to produce \emph{plausible} text, not \emph{valid} proofs, and pre-training corpora largely lack the step-level deductive supervision needed to learn the difference.
-External symbolic solvers can provide exactly this missing signal: cheap, dense, step-level labels \cite{lightman2024verify} that distinguish valid inferences from invalid ones.
+The pre-training objective (next-token prediction) teaches LLMs to produce \emph{plausible} text, not \emph{valid} proofs---and pre-training corpora largely lack the step-level deductive supervision needed to learn the difference.
+External symbolic solvers can provide exactly this missing signal: cheap, dense, step-level labels that distinguish valid inferences from invalid ones.
 
 Two families of neuro-symbolic methods attempt to close this gap.
-Semantic loss approaches such as LoCo-LMs \cite{calanzone2025loco} and Logical Neural Networks \cite{riegel2020logical} incorporate differentiable logical constraints into the training objective, encouraging local consistency of token-level predictions but leaving the global proof process implicit.
+Semantic loss approaches such as LoCo-LMs and Logical Neural Networks \cite{riegel2020logical} incorporate differentiable logical constraints into the training objective, encouraging local consistency of token-level predictions but leaving the global proof process implicit.
 Solver-augmented CoT approaches such as Logic-LM \cite{pan2023logic} and LINC \cite{olausson2023linc} parse CoTs into first-order logic (FOL) and invoke external theorem provers to verify or repair them.
 These methods improve faithfulness, but they still treat reasoning as unstructured text and do not learn explicit predictive models of which reasoning \emph{actions} will succeed in which states.
 
@@ -115,7 +112,11 @@ Concretely, we make the following contributions:
 
 On PrOntoQA, \sokrates{} substantially improves both task performance and reasoning soundness: relative to an optionized supervised fine-tuning (SFT) baseline, accuracy rises from $94.2\%$ to $97.6\%$, while step validity jumps from $27.3\%$ to $98.5\%$ and the fraction of fully valid traces from $2.1\%$ to $92.0\%$ (Table~\ref{tab:main_results}).
 The learned option policies also transfer zero-shot to FOLIO, and the option head $\qhat$ is well calibrated under Brier score and ECE, indicating that the model has acquired nontrivial predictive knowledge about its own reasoning steps.
-To our knowledge, \sokrates{} is the first LLM reasoning system combining a fixed option vocabulary, an explicit option-success predictor, and solver-guided \dpo{} in an iterative improvement loop.
+To our knowledge, \sokrates{} represents the first closed-loop instantiation of the \oak{} framework in a neural language model.
+
+% Architecture figure (moved to Introduction per improvement suggestions)
+% Old version preserved in figures/architecture.tex
+\input{figures/architecture_v2}
 
 %============================================================================
 \section{Background and Related Work}
@@ -124,23 +125,23 @@ To our knowledge, \sokrates{} is the first LLM reasoning system combining a fixe
 \subsection{LLM Reasoning and Failure Modes}
 
 Chain-of-thought prompting \cite{wei2022chain} and self-consistency decoding \cite{wang2023selfconsistency} are the current workhorses for LLM reasoning, but they do not guarantee logically valid chains.
-Systematic analyses reveal that LLMs are \emph{greedy reasoners}: locally good at individual deductions but poor at proof planning when many valid next steps exist \cite{saparov2023language}.
+Systematic analyses reveal that LLMs are \emph{greedy reasoners}---locally good at individual deductions but poor at proof planning when many valid next steps exist \cite{saparov2023language}.
 Furthermore, self-reflection without external feedback often fails to fix logical errors \cite{huang2024large}.
 
 \sokrates{} tackles exactly this ``right answer, wrong reasoning'' regime by explicitly modeling which \emph{optionized} reasoning actions are solver-valid in which states, rather than relying on the surface plausibility of free-form thoughts.
 
 Importantly, solver verification ensures \emph{logical consistency}: a trace containing contradictory intermediate steps is rejected, preventing the model from learning to produce self-contradicting proofs.
-This directly addresses a core challenge in LLM reasoning: avoiding responses that contradict themselves across multiple reasoning steps.
+This directly addresses a core challenge in LLM reasoning---avoiding responses that contradict themselves across multiple reasoning steps.
 
 \subsection{Logical Reasoning Benchmarks}
 
 \paragraph{Synthetic Benchmarks.}
-RuleTaker and ProofWriter \cite{clark2020transformers} provide synthetic rule-based reasoning with multi-hop proofs.
+RuleTaker and ProofWriter \cite{clark2021transformers} provide synthetic rule-based reasoning with multi-hop proofs.
 PrOntoQA \cite{saparov2023language} offers first-order synthetic worlds with formally analyzable CoT, making it ideal for isolating reasoning behavior.
 
 \paragraph{Natural Language Benchmarks.}
 FOLIO \cite{han2022folio} provides natural language premises with expert FOL annotations.
-P-FOLIO \cite{han2024pfolio} extends it with human-written proof chains labeled with inference rules, which inform our option vocabulary.
+P-FOLIO extends it with human-written proof chains labeled with inference rules, which inform our option vocabulary.
 
 We choose PrOntoQA as our primary testbed because it provides ground-truth proofs and fully specified FOL world models, enabling us to parse and verify every optionized step with a solver.
 
@@ -151,7 +152,7 @@ Prior work on integrating symbolic reasoning with LLMs falls into three categori
 \paragraph{LM + External Solver at Inference.}
 LINC \cite{olausson2023linc} uses LLMs as semantic parsers to generate FOL, with external provers computing answers.
 Logic-LM \cite{pan2023logic} parses CoT into FOL for solver verification and uses error messages for self-refinement.
-LAMBADA \cite{kazemi2023lambada} employs backward-chaining control with LLM modules.
+LAMBADA \cite{kazemi2022lambada} employs backward-chaining control with LLM modules.
 These approaches ``outsource'' proof search to symbolic engines but do not train an internal option model.
 
 \paragraph{LMs Trained to Simulate Solvers.}
@@ -159,7 +160,7 @@ LoGiPT \cite{feng2024logipt} trains an LM on hidden intermediate steps of a dedu
 Unlike \sokrates{}, LoGiPT trains on full solver traces but does not decompose them into reusable option macros or learn a separate predictive head for step validity.
 
 \paragraph{Neuro-Symbolic Consistency Objectives.}
-LoCo-LMs \cite{calanzone2025loco} and Logical Neural Networks \cite{riegel2020logical} incorporate differentiable logic constraints via semantic loss functions, encouraging consistency at the prediction level.
+LoCo-LMs and Logical Neural Networks \cite{riegel2020logical} incorporate differentiable logic constraints via semantic loss functions, encouraging consistency at the prediction level.
 These operate on truth values or soft logical constraints, not on a structured sequence of options with explicit per-option success probabilities.
 
 \paragraph{Positioning \sokrates{}.}
@@ -189,7 +190,7 @@ However, VeriCoT operates on \textbf{unstructured CoT text}, using a parser to e
 
 The classic \textbf{options} framework \cite{sutton1999between} defines options as temporally extended actions with an initiation set, intra-option policy, and termination condition, enabling temporal abstraction and planning.
 
-The \oak{} framework \cite{sutton2023reward} extends this by emphasizing that agents should learn not just policies but also \textbf{knowledge}: predictive models of how options behave.
+The \oak{} framework \cite{sutton2023reward} extends this by emphasizing that agents should learn not just policies but also \textbf{knowledge}---predictive models of how options behave.
 \oak{} advocates \emph{reward-respecting subtasks} whose optimal policies do not conflict with the main objective.
 
 From an \oak{} perspective, logical inference rules are options, the solver defines predictive knowledge about option outcomes, and \sokrates{}'s \dpo{} update corresponds to improving the option policy using this knowledge signal.
@@ -295,12 +296,7 @@ Given problem $(s_0, c)$, we sample traces from policy $\pi_\theta$:
 \end{enumerate}
 
 Constrained decoding separates \emph{syntax errors} (eliminated by grammar) from \emph{semantic errors} (detected by solver).
-We distinguish two levels of validity:
-\begin{itemize}
-    \item \textbf{Syntax-valid}: Action conforms to the Option grammar (guaranteed by constrained decoding).
-    \item \textbf{Solver-valid}: Action is logically correct given the current proof state (verified by the solver).
-\end{itemize}
-SFT teaches the model to produce syntax-valid Thought/Action traces; it does \emph{not} guarantee solver-valid reasoning.
+SFT teaches the model valid Thought/Action syntax and the option vocabulary; it does \emph{not} guarantee logically correct reasoning.
 
 \paragraph{State indexing and update.}
 At step $t$, we maintain an ordered formula list $\mathcal{F}_t = [\mathcal{P}; \mathcal{D}_t]$ containing all premises followed by all derived formulas so far.
@@ -328,10 +324,10 @@ For each trace $\tau$, we verify every step:
 \paragraph{Verifier details.}
 We use dataset-specific symbolic verifiers.
 For PrOntoQA, we implement an ontology-based forward-chaining engine and mark a step valid if the \emph{claimed derived fact} in the model's \texttt{Thought} can be proven from the context.
-Because Actions are grammar-constrained, parse failures are rare ($<2\%$ of steps); we accept unparsable steps as valid to avoid penalizing edge cases in our restricted-language parser (counting them as invalid would reduce trace validity by ${\sim}1$ percentage point).
-For FOLIO, we rely on the provided FOL annotations and a rule-level verifier: we implement checks for a subset of option types (covering ${\sim}85\%$ of generated steps) and mark unsupported rules as \textsc{Unknown} (counted as invalid in our step/trace metrics).
-When available, we configure Z3-based \cite{demoura2008z3} entailment/consistency checks with a 5\,s timeout.
-Verification failures are dominated by incorrect index selection or rule misuse rather than malformed syntax.
+If a step cannot be parsed for verification, we accept it as valid (a limitation of the current parser, which is designed for PrOntoQA's restricted language fragment).
+For FOLIO, we rely on the provided FOL annotations and a rule-level verifier: we implement checks for a subset of option types and mark unsupported rules as \textsc{Unknown} (counted as invalid in our step/trace metrics).
+When available, we configure Z3-based entailment/consistency checks with a 5\,s timeout.
+Because Actions are grammar-constrained, failures are dominated by incorrect index selection, misuse of rules, or unsupported rule types rather than malformed syntax.
 
 A trace is \textbf{fully valid} if all steps pass and the answer is correct:
 \begin{equation}
@@ -358,15 +354,15 @@ We train $\qhat$ with binary cross-entropy on solver labels:
     \mathcal{L}_{\qhat} = -\mathbb{E}_{(s,\omega,v)}\left[v \log \qhat + (1{-}v) \log(1{-}\qhat)\right]
     \label{eq:qhat_loss}
 \end{equation}
-and evaluate its knowledge quality using Brier score \cite{brier1950verification} and Expected Calibration Error (ECE) \cite{guo2017calibration}.
+and evaluate its knowledge quality using Brier score and Expected Calibration Error (ECE).
 
 \paragraph{Why calibration matters.}
 A well-calibrated $\qhat$ opens several avenues for test-time improvement that we leave for future work:
 (1) \emph{uncertainty-guided search}---when $\qhat(s, \omega) < \tau$ for all candidate options, the model could backtrack rather than committing to a low-confidence step;
 (2) \emph{best-of-$K$ with step-level scoring}---instead of selecting traces by final answer confidence alone, we can score each trace by $\prod_t \qhat(s_{t-1}, \omega_t)$, preferring traces where every step is predicted valid;
-(3) \emph{tree search with pruning}---in a Tree-of-Thoughts \cite{yao2023tree} setting, $\qhat$ can prune branches with low predicted validity before expensive solver calls.
-These capabilities require a calibrated predictor: one where $\qhat = 0.7$ means $70\%$ of such steps are actually valid.
-Our experiments confirm that the \sokrates{} loop produces such calibration (see Calibration Analysis).
+(3) \emph{tree search with pruning}---in a Tree-of-Thoughts setting, $\qhat$ can prune branches with low predicted validity before expensive solver calls.
+These capabilities require a calibrated predictor---one where $\qhat = 0.7$ means $70\%$ of such steps are actually valid.
+Our experiments confirm that the \sokrates{} loop produces such calibration (Section~\ref{sec:calibration}).
 
 \subsection{Preference Pair Construction}
 
@@ -394,8 +390,8 @@ We run $N=2$ iterations by default (Algorithm~\ref{alg:oak}), and report a third
 % Training loop algorithm (modular)
 \input{algorithms/oak_loop}
 
-This constitutes a micro \oak{} cycle: \emph{experience} (traces) $\rightarrow$ \emph{knowledge} (solver labels, $\qhat$) $\rightarrow$ \emph{policy improvement} (\dpo{}) $\rightarrow$ repeat.
-\dpo{} teaches the model to prefer correct premise indices, valid rule applications, and correct final answers, complementing SFT's format learning with semantic correctness.
+This constitutes a ``baby \oak{}'' cycle: \emph{experience} (traces) $\rightarrow$ \emph{knowledge} (solver labels, $\qhat$) $\rightarrow$ \emph{policy improvement} (\dpo{}) $\rightarrow$ repeat.
+\dpo{} teaches the model to prefer correct premise indices, valid rule applications, and correct final answers---complementing SFT's format learning with semantic correctness.
 
 %============================================================================
 \section{Experimental Setup}
@@ -478,11 +474,11 @@ However, step validity remains low ($27.3\%$) and trace validity is essentially 
 \emph{This is the ``right answer, wrong reasoning'' phenomenon in action.}
 
 Once we introduce the \sokrates{} loop, the situation changes substantially.
-After a single \oak{} iteration, step validity jumps to $87.8\%$ and trace validity to $71.3\%$, a \textbf{34$\times$ increase} in fully valid traces relative to SFT.
+After a single \oak{} iteration, step validity jumps to $87.8\%$ and trace validity to $71.3\%$---a \textbf{33$\times$ increase} in fully valid traces relative to SFT.
 After a second iteration, \sokrates{} reaches $97.6\%$ accuracy with $98.5\%$ step validity and $92.0\%$ trace validity, nearly closing the gap between answer correctness and reasoning soundness.
 
 \paragraph{Computational efficiency.}
-The \sokrates{} loop is data-efficient: with only $K{=}2$ samples/problem for preference learning, we achieve a $44\times$ improvement in trace validity.
+The \sokrates{} loop is data-efficient: with only $K{=}2$ samples/problem for preference learning, we achieve a $33\times$ improvement in trace validity.
 Each generated \texttt{Action} is verified once, so verifier cost scales as $O(N K \bar{T})$ calls per iteration (bounded by $N K T_{\max}$).
 Total training time is approximately $2$ hours on $6\times$ B200 GPUs, comparable to standard SFT.
 
@@ -498,7 +494,7 @@ We compute \textbf{Brier score} (mean squared error between $\qhat$ predictions 
 The SFT model exhibits severe overconfidence: when $\qhat > 0.9$, only $34\%$ of steps are actually valid (ECE $= 0.41$, Brier $= 0.38$).
 After one \oak{} iteration, calibration improves substantially (ECE $= 0.18$, Brier $= 0.15$).
 After two iterations, the model is well-calibrated: when $\qhat > 0.9$, $91\%$ of steps are valid (ECE $= 0.08$, Brier $= 0.09$).
-This demonstrates that the \oak{} loop progressively improves knowledge quality: the model learns not just to produce valid steps more often, but also to estimate how likely a candidate step is to be valid.
+This demonstrates that the \oak{} loop progressively improves knowledge quality---the model learns not just to produce valid steps more often, but also to estimate how likely a candidate step is to be valid.
 
 \subsection{Error Analysis}
 
@@ -518,29 +514,8 @@ The model issues \texttt{CONCLUDE} before the proof is complete, typically reach
 The solver marks these as invalid because the final formula is not yet derived.
 
 \paragraph{Problem difficulty.}
-Trace validity degrades with proof depth.
-Table~\ref{tab:depth} shows results stratified by required proof steps.
-\sokrates{} achieves near-perfect trace validity ($99.8\%$) on shallow problems (1--2 steps) but drops to $82.3\%$ on deep problems (4--5 steps).
-The SFT baseline shows uniformly poor trace validity across all depths ($1.5\%$--$2.8\%$), confirming that depth alone does not explain SFT's failures: the model simply produces invalid steps regardless of problem complexity.
-\sokrates{}'s gains are most pronounced in the mid-complexity range (3 steps: $94.1\%$ trace validity), with room for improvement on deep multi-hop reasoning.
-
-\begin{table}[t]
-\centering
-{\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lccc}
-\hline
-\textbf{Depth} & \textbf{SFT} & \textbf{\sokrates{}} & \textbf{$\Delta$} \\
-\hline
-1--2 steps & 2.8\% & 99.8\% & +97.0 \\
-3 steps & 2.1\% & 94.1\% & +92.0 \\
-4--5 steps & 1.5\% & 82.3\% & +80.8 \\
-\hline
-\end{tabular}
-}
-\caption{Trace validity (\%) by proof depth on PrOntoQA.}
-\label{tab:depth}
-\end{table}
+Trace validity degrades with proof depth: problems requiring 1--2 steps achieve $99.8\%$ trace validity, while those requiring 4--5 steps drop to $82.3\%$.
+This suggests that \sokrates{}'s improvements are most pronounced in the mid-complexity range, with room for improvement on deep multi-hop reasoning.
 
 \subsection{Zero-Shot Transfer to FOLIO}
 
@@ -568,7 +543,7 @@ Table~\ref{tab:ablations} analyzes what components drive the gains.
 \paragraph{Solver verification is essential.}
 In an ablation where \dpo{} is trained only on answer correctness (no step-level solver labels), accuracy improves to $95.5\%$, but step and trace validity barely move ($31.6\%$ and $2.2\%$, respectively), essentially matching the SFT baseline.
 This shows that the solver's step-level feedback is crucial: \textbf{without it, the model learns shortcuts to the right answer while keeping structurally unsound proofs}.
-This is perhaps the most important finding: solver verification is not optional for learning valid reasoning.
+This is perhaps the most important finding---solver verification is not optional for learning valid reasoning.
 
 \paragraph{Number of \oak{} iterations.}
 Moving from SFT (0 iterations) to one iteration yields the largest gain: trace validity increases from $2.1\%$ to $71.3\%$.
@@ -591,7 +566,7 @@ The challenge in each case is defining a suitable option vocabulary and integrat
 \paragraph{Limitations and Future Work.}
 First, our option vocabulary is manually specified and relatively small.
 A fuller \oak{} instantiation would learn options from experience or discover new macro-rules automatically.
-Second, we apply $\qhat$ only during training as an auxiliary head; we do not yet use it for planning or test-time search (e.g., to prune low-probability options or guide Tree-of-Thoughts-style \cite{yao2023tree, yang2024buffer} exploration).
+Second, we apply $\qhat$ only during training as an auxiliary head; we do not yet use it for planning or test-time search (e.g., to prune low-probability options or guide Tree-of-Thoughts-style exploration).
 Third, our experiments are restricted to FOL micro-worlds and a single base model; extending \sokrates{} to more diverse reasoning benchmarks (e.g., mathematical proofs, program verification) and model families is an obvious next step.
 Finally, solver calls remain a computational bottleneck; exploring approximate or learned verifiers that retain most of the benefits of symbolic checking while reducing cost is an interesting direction for future work.
 
@@ -599,83 +574,9 @@ Finally, solver calls remain a computational bottleneck; exploring approximate o
 
 %============================================================================
 \appendix
-\setcounter{secnumdepth}{2} % Enable section numbers for appendix
-%============================================================================
-
-\section{Implementation Details}
-\label{app:implementation}
-
-\subsection{Solver Implementation}
-
-Our PrOntoQA verifier implements an ontology-based forward-chaining engine.
-For each option application, the verifier:
-\begin{enumerate}
-    \item Parses the \texttt{Action} to extract rule type and argument indices
-    \item Retrieves the referenced formulas from the current proof state
-    \item Checks whether the rule application is logically valid
-    \item If valid, computes the derived formula; otherwise, returns \textsc{Invalid}
-\end{enumerate}
-
-For \texttt{MODUS\_PONENS}$(i, j)$, we verify that formula $i$ matches the antecedent of implication $j$, then derive the consequent.
-For \texttt{UNIV\_INSTANTIATION}$(i, c)$, we verify formula $i$ is universally quantified and substitute constant $c$ for the bound variable.
-The \texttt{CONCLUDE} option is validated against the ground-truth label during training and evaluation.
-
-\subsection{Training Infrastructure}
-
-All experiments use the HuggingFace Transformers library with the TRL package for \dpo{} training.
-We use DeepSpeed ZeRO Stage 2 for memory-efficient training across multiple GPUs.
-LoRA adapters are applied to all linear layers in the attention and MLP blocks.
-Gradient checkpointing is enabled to reduce memory footprint during the \sokrates{} loop, where we must store both the current policy and reference policy.
-
-%============================================================================
-\section{Additional Analysis}
-\label{app:analysis}
-
-\subsection{Calibration Progression}
-
-Table~\ref{tab:calibration_detail} shows detailed calibration metrics across \oak{} iterations.
-The option-success predictor $\qhat$ becomes progressively better calibrated as training proceeds.
-
-\begin{table}[t]
-\centering
-\begin{tabular}{lccc}
-\hline
-\textbf{Model} & \textbf{ECE} $\downarrow$ & \textbf{Brier} $\downarrow$ & \textbf{Acc@0.9} \\
-\hline
-SFT & 0.41 & 0.38 & 34\% \\
-\sokrates{} (iter 1) & 0.18 & 0.15 & 72\% \\
-\sokrates{} (iter 2) & 0.08 & 0.09 & 91\% \\
-\hline
-\end{tabular}
-\caption{Calibration metrics by iteration. ECE = Expected Calibration Error, Brier = Brier Score, Acc@0.9 = accuracy when $\qhat > 0.9$.}
-\label{tab:calibration_detail}
-\end{table}
-
-\subsection{Representative Error Examples}
-
-Below we show two representative errors from the final \sokrates{} model:
-
-\paragraph{Premise Misidentification.}
-\begin{quote}
-\small
-\texttt{Thought:} \textit{Rex is a zumpus (premise 4). Every zumpus is a dumpus (premise 2). So Rex is a dumpus.}\\
-\texttt{Action:}\\
-\hspace*{1em}\texttt{<Option type="MODUS\_PONENS" args="[4, 3]" />}\\
-\textbf{Error:} Premise 3 is ``Every tumpus is loud'', not the zumpus$\to$dumpus rule.
-\end{quote}
-
-\paragraph{Premature Conclusion.}
-\begin{quote}
-\small
-\texttt{Thought:} \textit{We have established that Stella is a tumpus. The conclusion asks if Stella is a rompus. Since every tumpus is a rompus, Stella is a rompus.}\\
-\texttt{Action:}\\
-\hspace*{1em}\texttt{<Option type="CONCLUDE" args="[0]" />}\\
-\textbf{Error:} The intermediate step (tumpus $\to$ rompus) was not explicitly derived before concluding.
-\end{quote}
-
-%============================================================================
 \section{Prompt and Generation Details}
 \label{app:prompt}
+%============================================================================
 
 \subsection{Complete Prompt Template}
 
@@ -698,40 +599,5 @@ We use the following generation settings:
     \item Maximum action tokens: 25
     \item Tokenizer padding: Left (required for batched generation with decoder-only models)
 \end{itemize}
-
-%============================================================================
-\section{Example Trace}
-\label{app:example}
-
-Below is a complete trace from the \sokrates{} model on a 3-hop PrOntoQA problem:
-
-\begin{quote}
-\small
-\textbf{Premises:}\\
-$[0]$ Every wumpus is cold.\\
-$[1]$ Every cold thing is a tumpus.\\
-$[2]$ Every tumpus is happy.\\
-$[3]$ Rex is a wumpus.\\[0.5em]
-\textbf{Query:} Is Rex happy?\\[0.5em]
-\textbf{Step 1:}\\
-\texttt{Thought:} \textit{Rex is a wumpus (premise 3). Every wumpus is cold (premise 0). So Rex is cold.}\\
-\texttt{Action:}\\
-\hspace*{1em}\texttt{<Option type="MODUS\_PONENS" args="[3, 0]" />}\\
-$\rightarrow d_0$: Rex is cold. \hfill {\color{green!50!black}\checkmark}\\[0.3em]
-\textbf{Step 2:}\\
-\texttt{Thought:} \textit{Rex is cold ($d_0$). Every cold thing is a tumpus (premise 1). So Rex is a tumpus.}\\
-\texttt{Action:}\\
-\hspace*{1em}\texttt{<Option type="MODUS\_PONENS" args="[4, 1]" />}\\
-$\rightarrow d_1$: Rex is a tumpus. \hfill {\color{green!50!black}\checkmark}\\[0.3em]
-\textbf{Step 3:}\\
-\texttt{Thought:} \textit{Rex is a tumpus ($d_1$). Every tumpus is happy (premise 2). So Rex is happy.}\\
-\texttt{Action:}\\
-\hspace*{1em}\texttt{<Option type="MODUS\_PONENS" args="[5, 2]" />}\\
-$\rightarrow d_2$: Rex is happy. \hfill {\color{green!50!black}\checkmark}\\[0.3em]
-\textbf{Step 4:}\\
-\texttt{Action:}\\
-\hspace*{1em}\texttt{<Option type="CONCLUDE" args="[0]" />}\\
-$\rightarrow$ \textbf{\textsc{True}} \hfill {\color{green!50!black}\checkmark}
-\end{quote}
 
 \end{document}
