@@ -36,7 +36,7 @@ Chain-of-thought reasoning, Logical reasoning, Neuro-symbolic AI, Direct Prefere
 
 ## TL;DR
 
-LLMs get right answers via wrong reasoning (94% acc, 2% valid proofs). SOKRATES uses solver feedback to supervise inference-rule options, achieving 44x improvement in proof validity (2%→92%). First LLM system combining option vocabulary + option-success predictor + solver-guided DPO.
+LLMs get right answers via wrong reasoning (94% acc, 2% valid proofs). SOKRATES uses solver feedback on inference-rule options: 44× improvement (2%→92% valid). First system with option vocabulary + success predictor + solver-guided DPO.
 
 ---
 
